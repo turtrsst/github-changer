@@ -1,6 +1,6 @@
 {
   "name": "github-changer",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "Dashboard lokal untuk maintain akun & repository GitHub: push, pull, clone, commit, dan peta alur Git dengan login OAuth GitHub asli.",
   "type": "module",

@@ -42,7 +42,9 @@ const ICONS = {
   download: '<path d="M12 3v12M7 10l5 5 5-5M4 20h16"/>',
   eye: '<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/>',
 };
-const ic = (name, extra = '') => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" ${extra} aria-hidden="true">${ICONS[name] || ICONS.git}</svg>`;
+// Semua ikon punya ukuran intrinsik (width/height) supaya tidak pernah
+// meledak ke ukuran default browser 300x150 kalau CSS konteksnya terlewat.
+const ic = (name, extra = '') => `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" ${extra} aria-hidden="true" focusable="false">${ICONS[name] || ICONS.git}</svg>`;
 
 /* ----------------------------- Helper ----------------------------- */
 const $ = (sel, root = document) => root.querySelector(sel);

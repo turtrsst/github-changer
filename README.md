@@ -392,6 +392,7 @@ npm run doctor   # laporan lingkungan
 | Automasi tidak jalan | Proses server mati (pakai `scripts\start-hidden.ps1` / autostart), `automation.enabled` masih `false`, atau belum ada akun GitHub login |
 | Webhook `Signature tidak valid` | `automation.webhookSecret` beda dengan secret di GitHub, atau `webhookEnabled` mati. Kirim ulang event `ping` untuk cek |
 | Run automasi `skipped` karena beda branch | Checkout server balik ke `arena/cbf4b10e-kantor-rama-ai`; ini memang fungsi `automation.branch` |
+| Ikon/gambar terlalu besar / menutupi halaman | Versi UI lama. `git pull`, restart `npm start`, lalu refresh browser (`Ctrl+F5`). Cek sidebar harus `v1.0.1`. Semua ikon SVG sekarang punya ukuran intrinsik + aturan CSS global (maks ~40px untuk empty-state) |
 | Repo tidak muncul | Cek `workspace.roots`, `scanDepth`, `workspace.exclude` → tombol **Cek path** |
 | Push gagal `Permission denied` | Token butuh scope `repo`; cek `auth.allowedEmails`; login ulang |
 | `Path di luar root project` | Tambahkan folder induk repo ke `workspace.roots` |

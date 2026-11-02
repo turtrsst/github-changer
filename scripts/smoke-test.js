@@ -275,6 +275,13 @@ try {
   check('halaman UI tersedia', html.status === 200 && (await html.text()).includes('GitHub Changer'));
   const css = await fetch(`${BASE}/styles.css`);
   check('CSS tersedia', css.status === 200);
+  const cssText = await css.text();
+  check('CSS punya ukuran global untuk svg (anti ikon raksasa)', /\bsvg\s*\{[^}]*width:\s*\d+px[^}]*height:\s*\d+px[^}]*flex:\s*none/s.test(cssText));
+  const appJs = await (await fetch(`${BASE}/app.js`)).text();
+  check('setiap ikon inline punya width/height intrinsik', /viewBox="0 0 24 24" width="18" height="18"/.test(appJs));
+  const etag = css.headers.get('etag');
+  const revalidated = await fetch(`${BASE}/styles.css`, { headers: { 'If-None-Match': etag || '' } });
+  check('aset UI revalidasi (no-cache + 304)', /no-cache/.test(css.headers.get('cache-control') || '') && revalidated.status === 304, `etag ${etag} · status ${revalidated.status}`);
 
   // Server kedua di port yang sama harus keluar rapi, bukan stack trace EADDRINUSE.
   const duplicate = spawnSync(process.execPath, ['server/index.js'], {

@@ -51,11 +51,24 @@ async function serveStatic(req, res, pathname) {
     return;
   }
   if (!stat.isFile()) { res.writeHead(404); res.end('Tidak ditemukan'); return; }
-  res.writeHead(200, {
-    'Content-Type': MIME[path.extname(filePath).toLowerCase()] || 'application/octet-stream',
+  const ext = path.extname(filePath).toLowerCase();
+  const etag = `"${stat.size.toString(16)}-${Math.floor(stat.mtimeMs).toString(16)}"`;
+  // HTML/JS/CSS selalu revalidasi: perbaikan UI langsung terlihat tanpa hard refresh.
+  const cacheControl = (ext === '.html' || ext === '.js' || ext === '.css') ? 'no-cache' : 'public, max-age=60';
+  const headers = {
+    'Content-Type': MIME[ext] || 'application/octet-stream',
     'Content-Length': stat.size,
-    'Cache-Control': path.extname(filePath) === '.html' ? 'no-store' : 'public, max-age=60',
-  });
+    'Cache-Control': cacheControl,
+    'ETag': etag,
+    'Last-Modified': stat.mtime.toUTCString(),
+  };
+  const ims = req.headers['if-modified-since'];
+  if (req.headers['if-none-match'] === etag || (!req.headers['if-none-match'] && ims && ims === headers['Last-Modified'])) {
+    res.writeHead(304, { 'ETag': etag, 'Cache-Control': cacheControl, 'Last-Modified': headers['Last-Modified'] });
+    res.end();
+    return;
+  }
+  res.writeHead(200, headers);
   fs.createReadStream(filePath).pipe(res);
 }
 
