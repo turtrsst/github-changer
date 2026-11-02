@@ -106,6 +106,21 @@ async function main() {
   const host = process.env.HOST || cfg.server.host || '127.0.0.1';
   const accountCount = accounts.count();
 
+  server.on('error', (error) => {
+    if (error.code === 'EADDRINUSE') {
+      console.error(`\n  ✗ Port ${port} sedang dipakai proses lain (biasanya sisa 'npm start' sebelumnya).`);
+      console.error('    Matikan proses lama dengan Ctrl+C di terminalnya, atau hentikan paksa:');
+      console.error(`      PowerShell : Get-NetTCPConnection -LocalPort ${port} | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force }`);
+      console.error('      cmd        : taskkill /F /IM node.exe');
+      console.error('    Atau pakai port lain:');
+      console.error(`      PowerShell : $env:PORT=${port + 1}; npm start`);
+      console.error(`      cmd        : set PORT=${port + 1} && npm start\n`);
+      process.exit(1);
+    }
+    console.error('\n  ✗ Server gagal dijalankan:', error.message, '\n');
+    process.exit(1);
+  });
+
   server.listen(port, host, () => {
     const shownHost = host === '0.0.0.0' ? 'localhost' : host;
     console.log('');

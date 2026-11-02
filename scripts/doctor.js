@@ -37,8 +37,10 @@ for (const root of env.roots) {
   console.log(`  ${ok ? '✓' : '✗'} ${root.path}${root.real && root.real !== root.path ? ` → ${root.real}` : ''}${ok ? '' : ` (${root.error || 'tidak bisa ditulis'})`}`);
   if (ok) {
     try {
-      const repos = await git.scanRepos(cfg);
-      line('  Repository terdeteksi', String(repos.length));
+      // Scan per-root, jangan tampilkan total semua root berulang kali.
+      const oneRoot = { ...cfg, workspace: { ...cfg.workspace, roots: [root.path] } };
+      const repos = await git.scanRepos(oneRoot);
+      line('  Repository terdeteksi', `${repos.length} repo di root ini`);
     } catch (error) { warn('  Scan gagal', error.message); }
   }
 }

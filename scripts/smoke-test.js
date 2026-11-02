@@ -216,6 +216,13 @@ try {
   const css = await fetch(`${BASE}/styles.css`);
   check('CSS tersedia', css.status === 200);
 
+  // Server kedua di port yang sama harus keluar rapi, bukan stack trace EADDRINUSE.
+  const duplicate = spawnSync(process.execPath, ['server/index.js'], {
+    cwd: ROOT, env: process.env, encoding: 'utf8', timeout: 10000,
+  });
+  const dupOut = `${duplicate.stdout || ''}${duplicate.stderr || ''}`;
+  check('EADDRINUSE ditangani dengan pesan ramah', duplicate.status === 1 && /sedang dipakai/.test(dupOut), `status ${duplicate.status} · ${dupOut.slice(-160)}`);
+
   console.log(`\n  Hasil: ${passed} lolos, ${failed} gagal\n`);
 } catch (error) {
   failed += 1;

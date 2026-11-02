@@ -55,7 +55,18 @@ npm start
 
 > ⚠️ **Jangan** `cd C:\xampp\htdocs\github-changer` dulu lalu `git clone …` — itu yang bikin hasilnya bersarang jadi `C:\xampp\htdocs\github-changer\github-changer`. Clone dilakukan **dari folder induk** (`C:\xampp\htdocs`), dengan nama folder tujuan `github-changer`. Kalau folder tujuan sudah ada dan kosong, alternatif: `cd C:\xampp\htdocs\github-changer` lalu `git clone --branch arena/a2271201-github-changer https://github.com/turtrsst/github-changer.git .`
 
-**Kalau terlanjur bersarang** (`…\github-changer\github-changer`), pilih salah satu:
+**Kalau terlanjur bersarang** (`…\github-changer\github-changer`), **WAJIB matikan dulu proses lama** sebelum memindahkan/menghapus folder. Sisa `npm start` masih menahan CWD-nya (Windows mengunci folder) dan port 4173; kalau dipaksa `rmdir /S /Q`, sebagian file bisa terhapus tapi folder nested-nya tertinggal sehingga `git clone` ditolak ("destination already exists").
+
+```powershell
+# 0. Matikan proses lama (pilih salah satu)
+Ctrl+C di terminal 'npm start' yang masih terbuka
+# atau:
+Get-NetTCPConnection -LocalPort 4173 | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force }
+# atau paksa semua node (hati-hati kalau ada app Node lain):
+taskkill /F /IM node.exe
+```
+
+Setelah benar-benar mati, pilih salah satu:
 
 ```powershell
 # Opsi A — pindahkan isinya naik satu level (menjaga .env / data yang sudah ada)
@@ -72,9 +83,29 @@ cd /d C:\xampp\htdocs
 rmdir /S /Q github-changer
 git clone --branch arena/a2271201-github-changer https://github.com/turtrsst/github-changer.git github-changer
 cd github-changer
+npm run doctor
 ```
 
-`npm run doctor` dan dashboard sekarang **mendeteksi folder bersarang otomatis** dan kasih peringatan beserta path tujuan yang benar.
+**Recovery kalau folder sudah kehapus sebagian** (gejala: `Could not read package.json`, `destination path already exists and is not an empty directory`):
+
+```powershell
+# 1. pastikan tidak ada node yang masih jalan
+Get-NetTCPConnection -LocalPort 4173 -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force }
+taskkill /F /IM node.exe 2>$null
+
+# 2. hapus TOTAL folder yang rusak dari induknya
+cd C:\xampp\htdocs
+Remove-Item -Recurse -Force .\github-changer
+
+# 3. clone ulang ke path yang benar
+git clone --branch arena/a2271201-github-changer https://github.com/turtrsst/github-changer.git github-changer
+cd github-changer
+git log --oneline -1        # harusnya 333b7e8 / commit terbaru
+npm run doctor
+npm start
+```
+
+`npm run doctor` dan dashboard sekarang **mendeteksi folder bersarang otomatis** dan kasih peringatan beserta path tujuan yang benar. Kalau port 4173 masih dipakai, `npm start` tidak lagi crash dengan stack trace — app menampilkan pesan + perintah untuk mematikan proses atau ganti `PORT`.
 
 Kalau terlanjur `git clone` biasa (tanpa `-b`): `git fetch origin && git checkout arena/a2271201-github-changer`.
 
@@ -274,6 +305,9 @@ npm run doctor   # laporan lingkungan
 | Windows: buka lewat Apache/XAMPP | App jalan di Node port 4173; buka `http://localhost:4173` atau pasang reverse proxy Apache |
 | Windows: hasil clone bersarang `github-changer\github-changer` | `doctor` & dashboard kasih peringatan. Pindahkan isinya ke `C:\xampp\htdocs\github-changer` (PowerShell `Get-ChildItem -Force … \| Move-Item …`) atau clone ulang dari `C:\xampp\htdocs` |
 | Windows: push minta password | Pastikan Git ≥ 2.31 (`GIT_CONFIG_COUNT`) dan `git.authHost` = `github.com` |
+| `EADDRINUSE 127.0.0.1:4173` | Masih ada `npm start` lama. `Ctrl+C` di terminalnya, atau `Get-NetTCPConnection -LocalPort 4173 \| ForEach-Object { Stop-Process -Id $_.OwningProcess -Force }`, atau `set PORT=4174 && npm start` |
+| `used by another process` saat `Remove-Item` / `rmdir` | Proses node lama mengunci CWD-nya. Matikan dulu (lihat baris atas), **baru** hapus folder. Jangan paksa `rmdir /S /Q` sebelum itu |
+| `Could not read package.json` / clone ditolak "not empty" | Folder terhapus sebagian. Pakai blok **Recovery** di section Windows/XAMPP |
 | Repo tidak muncul | Cek `workspace.roots`, `scanDepth`, `workspace.exclude` → tombol **Cek path** |
 | Push gagal `Permission denied` | Token butuh scope `repo`; cek `auth.allowedEmails`; login ulang |
 | `Path di luar root project` | Tambahkan folder induk repo ke `workspace.roots` |
