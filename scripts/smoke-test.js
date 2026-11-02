@@ -102,6 +102,8 @@ try {
   check('bootstrap terotentikasi', boot.data.authenticated === true, JSON.stringify(boot.data.error));
   check('git terdeteksi', boot.data.environment?.git?.ok === true);
   check('root project valid', boot.data.environment?.roots?.[0]?.exists === true);
+  check('saran clone terdeteksi dari origin', typeof boot.data.suggestedClone?.url === 'string' && typeof boot.data.suggestedClone?.name === 'string', JSON.stringify(boot.data.suggestedClone));
+  check('folder tujuan clone tersedia', Array.isArray(boot.data.cloneTargets) && boot.data.cloneTargets.length > 0);
   check('konfigurasi OAuth tidak bocor', typeof boot.data.config?.auth?.clientId === 'string');
 
   const noAuth = await request('/api/repos');
@@ -171,6 +173,8 @@ try {
 
   const init = await request('/api/git', { method: 'POST', token, body: { action: 'init', params: { name: 'fresh', root: WORK, branch: 'main' } } });
   check('init repo baru berhasil', init.data.result?.ok === true, init.data.result?.output);
+  const init2 = await request('/api/git', { method: 'POST', token, body: { action: 'init', params: { name: 'fresh', root: WORK, branch: 'main' } } });
+  check('clone/init anti-bentrok nama folder', init2.data.result?.ok === true && /fresh-2$/.test(init2.data.result?.path || ''), init2.data.result?.path);
 
   const ctx = await request('/api/arena/context', { token });
   check('konteks Arena AI ada', (ctx.data.context?.text || '').includes('Branch:'));

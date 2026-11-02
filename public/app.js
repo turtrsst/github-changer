@@ -157,6 +157,46 @@ function setToken(token) {
   else LS.del('ghc.token');
 }
 
+/* ---------- "Clone ke lokal dulu" ---------- */
+function cloneTargets() {
+  return (S.boot?.cloneTargets?.length ? S.boot.cloneTargets : S.boot?.config?.workspace?.roots) || [];
+}
+function preferredCloneRoot() {
+  const list = cloneTargets();
+  const roots = S.boot?.config?.workspace?.roots || [];
+  return list.find((p) => !roots.includes(p)) || list[0] || '';
+}
+function cloneSuggestedModal() {
+  const suggested = S.boot?.suggestedClone || {};
+  return { kind: 'clone', url: suggested.url || '', name: suggested.name || '', branch: suggested.branch || '', root: preferredCloneRoot() };
+}
+function cloneOnboardingHTML() {
+  if (LS.get('ghc.cloneHint')) return '';
+  const suggested = S.boot?.suggestedClone || {};
+  const root = preferredCloneRoot();
+  return `<div class="card pad" style="margin-bottom:18px;border-color:color-mix(in srgb,var(--a1) 40%,var(--border));background:linear-gradient(115deg,color-mix(in srgb,var(--a1) 13%,transparent),color-mix(in srgb,var(--a2) 8%,transparent))">
+    <div class="row wrap">
+      <span class="brand-mark" style="width:44px;height:44px;font-size:20px">${ic('download')}</span>
+      <div style="min-width:210px"><div class="eyebrow">Langkah 1 · mulai dari sini</div>
+        <div style="font-size:15px;font-weight:700">Clone repo ke lokal dulu</div>
+        <div class="tiny muted">Tarik repo dari GitHub ke folder server, baru push / pull / commit. URL diambil otomatis dari <code>origin</code> project ini.</div></div>
+      <span class="spacer"></span>
+      <div class="btn-group">
+        <button class="btn primary" data-action="clone-suggested" ${suggested.url ? '' : 'disabled'}>${ic('download')} Clone ${esc(suggested.name || 'repo')}</button>
+        <button class="btn" data-action="clone-open">URL lain</button>
+        <button class="btn icon ghost" data-action="clone-dismiss" title="Sembunyikan">${ic('close')}</button>
+      </div>
+    </div>
+    <div class="divider"></div>
+    <div class="row wrap tiny">
+      <span class="chip accent">${ic('link')} <span class="mono truncate" style="max-width:340px">${esc(suggested.url || 'origin belum terdeteksi')}</span></span>
+      <span class="chip">${ic('branch')} ${esc(suggested.branch || 'main')}</span>
+      <span class="chip">${ic('folder')} <span class="mono">${esc(root || '-')}/&lt;${esc(suggested.name || 'repo')}&gt;</span></span>
+      ${S.repos?.length ? `<span class="chip good">${S.repos.length} repo lokal sudah ada</span>` : ''}
+    </div>
+  </div>`;
+}
+
 /* ----------------------------- Bootstrap & data ----------------------------- */
 async function bootstrap() {
   S.boot = await api('/api/bootstrap');
@@ -337,6 +377,7 @@ function loginScreenHTML() {
       <h1>Satu tempat buat<br /><span class="gradient-text">semua urusan Git.</span></h1>
       <p>Push, pull, clone, commit, dan maintain repository langsung dari komputer/server kamu — dengan login GitHub asli dan catatan alur yang jelas: dari mana, ke mana, dan oleh siapa.</p>
       <div class="feature"><i>${ic('shield')}</i><span><b>OAuth Device Flow asli.</b> Login per email GitHub, token terenkripsi di disk.</span></div>
+      <div class="feature"><i>${ic('download')}</i><span><b>Clone dulu ke lokal.</b> Langkah pertama setelah login: tarik repo ke folder server, baru maintain.</span></div>
       <div class="feature"><i>${ic('arrow-up')}</i><span><b>Peta alur Git.</b> Tiap push/pull tercatat lengkap dengan remote URL, branch, dan SHA.</span></div>
       <div class="feature"><i>${ic('folder')}</i><span><b>Patuh path server.</b> Repository dipindai dari root project yang kamu tentukan.</span></div>
       <div class="feature"><i>${ic('sparkles')}</i><span><b>Parameter lengkap + Arena AI.</b> Semua pengaturan bisa diubah dari UI.</span></div>
@@ -533,6 +574,7 @@ function dashboardHTML() {
       <button class="btn" data-action="scan-repos">${ic('refresh')} Pindai ulang</button>
       <button class="btn primary" data-action="clone-open">${ic('plus')} Clone repo</button>
     </div></div>
+  ${cloneOnboardingHTML()}
   <div class="grid g4" style="margin-bottom:16px">
     ${statCard('Repository lokal', S.repos === null ? '…' : repos.length, `${dirty} ada perubahan · ${ahead} ahead`, 'repo')}
     ${statCard('Repo di GitHub', S.gh === null ? '…' : (S.gh || []).length, cfg.auth.clientId ? 'sinkron via GitHub API' : 'OAuth belum diatur', 'github')}
@@ -605,7 +647,11 @@ function renderRepoList() {
   if (S.repoFilter === 'ahead') list = list.filter((r) => r.ahead > 0);
   if (S.repoFilter === 'behind') list = list.filter((r) => r.behind > 0);
   if (!list.length) {
-    root.innerHTML = `<div class="empty"><div class="big">${ic('folder')}</div><strong>Tidak ada repository yang cocok</strong>Tambah root project di Parameters, atau clone repo baru.</div>`;
+    root.innerHTML = `<div class="empty"><div class="big">${ic('folder')}</div><strong>Tidak ada repository yang cocok</strong>
+      <p class="tiny">Clone repo ke lokal dulu, atau tambah root project di Parameters.</p>
+      <div class="btn-group" style="justify-content:center;margin-top:14px">
+        <button class="btn primary" data-action="clone-suggested">${ic('download')} Clone repo ke lokal dulu</button>
+        <button class="btn" data-action="clone-open">URL lain</button></div></div>`;
     return;
   }
   root.innerHTML = list.map((r) => {
@@ -937,13 +983,16 @@ function renderModal() {
   let title = ''; let body = ''; let foot = ''; let wide = '';
   if (m.kind === 'clone' || m.kind === 'init') {
     const isClone = m.kind === 'clone';
-    title = isClone ? 'Clone repository' : 'Init repository baru';
+    const targets = cloneTargets();
+    const selectedRoot = m.root || preferredCloneRoot();
+    title = isClone ? 'Clone repository ke lokal' : 'Init repository baru';
     body = `<div class="stack">
-      ${isClone ? `<div class="field"><label>URL repository</label><input class="input mono" data-field="url" placeholder="https://github.com/user/repo.git" value="${esc(m.url || '')}" /></div>` : `<div class="field"><label>URL remote (opsional)</label><input class="input mono" data-field="url" placeholder="https://github.com/user/repo.git" /></div>`}
+      ${isClone ? `<div class="field"><label>URL repository</label><input class="input mono" data-field="url" placeholder="https://github.com/user/repo.git" value="${esc(m.url || '')}" />
+        ${S.boot.suggestedClone?.url ? `<button class="btn sm" data-action="clone-use-suggested">${ic('sparkles')} Pakai URL dari origin project ini</button>` : ''}</div>` : `<div class="field"><label>URL remote (opsional)</label><input class="input mono" data-field="url" placeholder="https://github.com/user/repo.git" /></div>`}
       <div class="grid g2"><div class="field"><label>Nama folder</label><input class="input mono" data-field="name" value="${esc(m.name || '')}" placeholder="nama-project" /></div>
-      <div class="field"><label>Root tujuan</label><select class="input" data-field="root">${(S.boot.config.workspace.roots || []).map((r) => `<option value="${esc(r)}">${esc(r)}</option>`).join('')}</select></div></div>
+      <div class="field"><label>Folder tujuan (di server)</label><select class="input" data-field="root">${targets.map((r) => `<option value="${esc(r)}" ${r === selectedRoot ? 'selected' : ''}>${esc(r)}</option>`).join('')}</select></div></div>
       <div class="field"><label>Branch (opsional)</label><input class="input mono" data-field="branch" placeholder="${esc(S.boot.config.git.defaultBranch)}" value="${esc(m.branch || '')}" /></div>
-      <p class="tiny faint">Path hasil: <code>${esc(S.boot.config.workspace.roots[0] || '')}/&lt;nama folder&gt;</code>. Hanya folder di dalam root project yang diizinkan.</p></div>`;
+      <p class="tiny faint">Path hasil: <code>${esc(selectedRoot || S.boot.config.workspace.roots[0] || '')}/&lt;nama folder&gt;</code>. Kalau nama sudah dipakai, otomatis diberi akhiran <code>-2</code>, <code>-3</code>, … Hanya folder di dalam root project yang diizinkan.</p></div>`;
     foot = `<button class="btn" data-action="modal-close">Batal</button><button class="btn primary" data-action="${isClone ? 'clone-submit' : 'init-submit'}">${ic(isClone ? 'download' : 'plus')} ${isClone ? 'Clone' : 'Buat repo'}</button>`;
   } else if (m.kind === 'create') {
     title = 'Buat repository di GitHub';
@@ -989,7 +1038,7 @@ async function doGit(action, params) {
     toast(r.ok ? `${(OP[action] || { label: action }).label} berhasil` : `${(OP[action] || { label: action }).label} gagal`, d.entry.summary || r.output?.slice(0, 140), r.ok ? 'good' : 'bad');
     await Promise.allSettled([loadRepos(true), loadActivity()]);
     if (S.drawer) await refreshDetail();
-    return Boolean(r.ok);
+    return r.ok ? r : false;
   } catch (error) {
     pushTerminal('err', `\n${error.message}\n`);
     toast('Gagal menjalankan perintah', error.message, 'bad');
@@ -1247,6 +1296,19 @@ document.addEventListener('click', async (event) => {
       break;
     }
     case 'quick-checkout': await doGit('checkout', { path: S.drawer?.path, target: trigger.dataset.branch }); break;
+    case 'clone-suggested': S.modal = cloneSuggestedModal(); renderModal(); break;
+    case 'clone-dismiss': LS.set('ghc.cloneHint', '1'); renderView(); break;
+    case 'clone-use-suggested': {
+      const suggested = S.boot.suggestedClone || {};
+      const urlField = $('[data-field="url"]', $('#modal-root'));
+      const nameField = $('[data-field="name"]', $('#modal-root'));
+      const branchField = $('[data-field="branch"]', $('#modal-root'));
+      if (urlField) urlField.value = suggested.url || '';
+      if (nameField) nameField.value = suggested.name || '';
+      if (branchField) branchField.value = suggested.branch || '';
+      toast('URL terisi', suggested.url || '', 'good');
+      break;
+    }
     case 'clone-open': S.modal = { kind: 'clone' }; renderModal(); break;
     case 'init-open': S.modal = { kind: 'init' }; renderModal(); break;
     case 'modal-close': S.modal = null; clearFlowTimers(); S.flow = null; renderModal(); break;
@@ -1255,8 +1317,12 @@ document.addEventListener('click', async (event) => {
       const root = $('#modal-root');
       const params = { url: val('url', root), name: val('name', root), root: val('root', root), branch: val('branch', root) };
       if (!params.name || (action === 'clone-submit' && !params.url)) { toast('Lengkapi dulu', 'Nama folder (dan URL untuk clone) wajib diisi.', 'warn'); break; }
-      const okDone = await doGit(action === 'clone-submit' ? 'clone' : 'init', params);
-      if (okDone) { S.modal = null; renderModal(); }
+      const cloned = await doGit(action === 'clone-submit' ? 'clone' : 'init', params);
+      if (cloned) {
+        S.modal = null; renderModal();
+        LS.set('ghc.cloneHint', '1');
+        if (cloned.path) await openRepo(cloned.path); // langsung buka repo hasil clone
+      }
       break;
     }
     case 'gh-create-open': S.modal = { kind: 'create' }; renderModal(); break;

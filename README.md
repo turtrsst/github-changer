@@ -30,12 +30,29 @@ Tidak ada `npm install`, tidak ada build step, tidak ada dependency eksternal. *
 
 ---
 
-## Mulai cepat
+## 1. Clone kode ke lokal dulu
+
+Kode ada di branch **`arena/a2271201-github-changer`** — branch `main` masih berisi commit awal (README doang). Jadi clone dengan `-b`:
+
+```bash
+git clone --branch arena/a2271201-github-changer https://github.com/turtrsst/github-changer.git
+cd github-changer
+npm run doctor          # cek Git, root project, OAuth, dll
+npm start               # http://localhost:4173
+```
+
+Kalau terlanjur `git clone` biasa: `git fetch origin && git checkout arena/a2271201-github-changer`.
+
+Di lingkungan preview, clone lokal juga sudah dibuat di **`/home/user/projects/github-changer`** (origin tetap `https://github.com/turtrsst/github-changer.git`), jadi app langsung menampilkan 2 repo: checkout kerja + hasil clone.
+
+> Di dalam app, setelah login muncul kartu **"Langkah 1 · Clone repo ke lokal dulu"**: URL diisi otomatis dari `origin` project ini, folder tujuan bisa dipilih dari struktur folder server, nama folder anti-bentrok (`-2`, `-3`, …), dan setelah clone selesai drawer repo langsung terbuka. Tombolnya juga ada di halaman Repository saat daftar masih kosong.
+
+## 2. Mulai cepat (ringkas)
 
 ```bash
 cd /path/ke/github-changer
-npm run doctor          # cek Git, root project, OAuth, dll
-npm start               # http://localhost:4173
+npm run doctor
+npm start
 ```
 
 Atau dengan environment:

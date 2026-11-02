@@ -77,6 +77,8 @@ export async function handleApi(req, res, url, bus) {
       activeAccountId: ctx.pinOk ? ctx.account?.id || null : null,
       pinRequired: ctx.pinRequired,
       pinOk: ctx.pinOk,
+      suggestedClone: env.suggested,
+      cloneTargets: env.cloneTargets,
       environment: {
         git: env.git, gh: env.gh, node: env.node, platform: env.platform,
         roots: env.roots, projectRoot: env.projectRoot, askpass: env.askpass,

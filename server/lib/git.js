@@ -141,6 +141,37 @@ export function resolveInside(cfg, input, { mustExist = true } = {}) {
   return target;
 }
 
+/** Repo yang disarankan untuk di-clone lebih dulu: ambil dari `origin` project ini. */
+export async function suggestedClone(cfg) {
+  const [remoteRes, branchRes] = await Promise.all([
+    runGit(cfg, ['-C', PROJECT_ROOT, 'remote', 'get-url', 'origin']),
+    runGit(cfg, ['-C', PROJECT_ROOT, 'rev-parse', '--abbrev-ref', 'HEAD']),
+  ]);
+  const url = remoteRes.code === 0 ? remoteRes.stdout.trim() : '';
+  const branch = branchRes.code === 0 ? branchRes.stdout.trim() : cfg.git.defaultBranch;
+  const name = (url ? path.basename(url) : path.basename(PROJECT_ROOT)).replace(/\.git$/, '') || path.basename(PROJECT_ROOT);
+  return { url, name, branch, sourcePath: PROJECT_ROOT, root: cfg.workspace.roots[0] || path.dirname(PROJECT_ROOT) };
+}
+
+/** Daftar folder tujuan clone: root project + subfolder langsungnya (yang bukan repo). */
+export async function discoverCloneTargets(cfg, roots) {
+  const exclude = new Set(cfg.workspace.exclude || []);
+  const out = [];
+  for (const root of roots) {
+    if (!root.exists || !root.writable) continue;
+    out.push(root.real);
+    let entries = [];
+    try { entries = await fsp.readdir(root.real, { withFileTypes: true }); } catch { continue; }
+    for (const entry of entries) {
+      if (!entry.isDirectory() || entry.isSymbolicLink() || exclude.has(entry.name) || entry.name.startsWith('.')) continue;
+      const candidate = path.join(root.real, entry.name);
+      if (fs.existsSync(path.join(candidate, '.git'))) continue; // jangan nested repo
+      try { await fsp.access(candidate, fs.constants.W_OK); out.push(candidate); } catch { /* read-only */ }
+    }
+  }
+  return [...new Set(out)].slice(0, 40);
+}
+
 export async function environment(cfg) {
   const git = resolveGitBinary(cfg);
   ensureAskpass();
@@ -171,6 +202,8 @@ export async function environment(cfg) {
     dataDir: path.join(PROJECT_ROOT, 'data'),
     askpass: ASKPASS,
     roots,
+    suggested: await suggestedClone(cfg),
+    cloneTargets: await discoverCloneTargets(cfg, roots),
   };
 }
 
@@ -384,10 +417,19 @@ export async function runOperation(cfg, { account, token, onOutput }, action, pa
   try {
     if (action === 'clone' || action === 'init') {
       const root = params.root || cfg.workspace.roots[0];
-      const folder = params.name || (action === 'clone' ? String(params.url || '').split('/').pop().replace(/\.git$/, '') : '');
-      if (!folder || /[/\\]/.test(folder) || !/^[\w.\-]+$/.test(folder)) throw new HttpError(400, 'Nama folder project tidak valid.');
-      const target = resolveInside(cfg, path.join(path.resolve(root), folder), { mustExist: false });
-      if (fs.existsSync(target) && fs.readdirSync(target).length) throw new HttpError(409, `Folder sudah terisi: ${target}`);
+      const baseFolder = params.name || (action === 'clone' ? String(params.url || '').split('/').pop().replace(/\.git$/, '') : '');
+      if (!baseFolder || /[/\\]/.test(baseFolder) || !/^[\w.\-]+$/.test(baseFolder)) throw new HttpError(400, 'Nama folder project tidak valid.');
+      const occupied = (candidate) => {
+        try { return fs.existsSync(candidate) && fs.readdirSync(candidate).length > 0; } catch { return false; }
+      };
+      // Kalau nama folder sudah dipakai, beri suffix -2, -3, ... supaya "clone dulu" tidak pernah mentok.
+      let folder = baseFolder;
+      let target = resolveInside(cfg, path.join(path.resolve(root), folder), { mustExist: false });
+      for (let i = 2; i <= 30 && occupied(target) && params.autoSuffix !== false; i += 1) {
+        folder = `${baseFolder}-${i}`;
+        target = resolveInside(cfg, path.join(path.resolve(root), folder), { mustExist: false });
+      }
+      if (occupied(target)) throw new HttpError(409, `Folder sudah terisi: ${target}`);
       const args = action === 'clone'
         ? ['clone', ...(params.branch ? ['--branch', assertRef(params.branch, 'branch')] : []), assertUrl(params.url), target]
         : ['init', '-b', assertRef(params.branch || cfg.git.defaultBranch, 'branch'), target];
