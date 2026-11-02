@@ -366,6 +366,15 @@ export async function handleWebhook(req, res, bus) {
   }
   if (event !== 'push') return json(res, 200, { ok: true, skipped: true, reason: `event '${event}' diabaikan` });
 
+  const fullName = String(payload.repository?.full_name || '');
+  const wantedRepos = String(cfg.automation.webhookRepository || '')
+    .split(',')
+    .map((item) => item.trim().toLowerCase())
+    .filter(Boolean);
+  if (wantedRepos.length && !wantedRepos.includes(fullName.toLowerCase())) {
+    return json(res, 200, { ok: true, skipped: true, reason: `repo ${fullName || '(tanpa nama)'} tidak termasuk automation.webhookRepository` });
+  }
+
   const ref = String(payload.ref || '');
   const wantedBranch = String(cfg.automation.webhookBranch || '').trim();
   if (wantedBranch && ref !== `refs/heads/${wantedBranch}` && ref !== wantedBranch) {
@@ -373,7 +382,6 @@ export async function handleWebhook(req, res, bus) {
   }
 
   const repoPaths = await matchRepos(cfg, payload);
-  const fullName = payload.repository?.full_name || '';
   bus.emit('webhook', { event, ref, repository: fullName, matched: repoPaths.length });
   if (!repoPaths.length) {
     return json(res, 200, { ok: true, skipped: true, reason: `Tidak ada repo lokal yang cocok dengan ${fullName}`, matched: 0 });

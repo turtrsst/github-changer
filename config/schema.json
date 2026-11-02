@@ -37,6 +37,7 @@
   { "path": "automation.webhookEnabled", "section": "Automasi", "label": "Aktifkan webhook GitHub", "type": "boolean", "desc": "Terima event push dari GitHub di /webhook/github lalu jalankan aksi + perintah deploy." },
   { "path": "automation.webhookSecret", "section": "Automasi", "label": "Webhook secret", "type": "text", "desc": "WAJIB diisi sama persis dengan secret di GitHub → Settings → Webhooks. Signature diverifikasi HMAC-SHA256. Tanpa secret webhook ditolak." },
   { "path": "automation.webhookAction", "section": "Automasi", "label": "Aksi saat webhook", "type": "select", "options": ["pull", "fetch", "push"], "desc": "Aksi Git yang dijalankan saat ada push yang cocok." },
+  { "path": "automation.webhookRepository", "section": "Automasi", "label": "Repo webhook (full_name)", "type": "text", "desc": "Batasi hanya push dari repo ini, mis. turtrsst/kra. Pisahkan koma untuk beberapa repo. Kosong = semua repo yang punya secret valid. Sangat disarankan diisi!" },
   { "path": "automation.webhookBranch", "section": "Automasi", "label": "Branch webhook", "type": "text", "desc": "Mis. main. Kosong = semua branch. Push ke branch lain diabaikan." },
   { "path": "automation.deployCommand", "section": "Automasi", "label": "Perintah setelah sync", "type": "text", "desc": "OPSIONAL & berisiko: dijalankan di folder repo TANPA shell (mis. npm run build). Tokenisasi spasi saja; tidak ada &&, |, ;. Kosongkan kalau tidak perlu." }
 ]

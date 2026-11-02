@@ -837,6 +837,7 @@ function renderAutomationBody() {
         <div class="field"><label>URL webhook</label><div class="row"><input class="input mono" readonly value="${esc(hookUrl)}" /><button class="btn sm icon" data-action="copy" data-copy="${esc(hookUrl)}" title="Salin">${ic('copy')}</button></div></div>
         <div class="field" style="margin-top:10px"><label>Secret</label><div class="row"><input class="input mono" readonly type="password" value="${esc(cfg.webhookSecret || '(belum diatur)')}" /><button class="btn sm icon" data-action="copy" data-copy="${esc(cfg.webhookSecret)}" title="Salin secret">${ic('copy')}</button></div></div>
         <div class="kv" style="margin-top:12px"><span class="k">Aksi saat push</span><span class="v">${esc(cfg.webhookAction || 'pull')}</span>
+          <span class="k">Repo dibatasi</span><span class="v">${esc(cfg.webhookRepository || 'semua (disarankan diisi)')}</span>
           <span class="k">Branch</span><span class="v">${esc(cfg.webhookBranch || 'semua')}</span>
           <span class="k">Deploy command</span><span class="v">${esc(cfg.deployCommand || '(tidak ada)')}</span></div>
         <ol class="steps-list" style="margin-top:14px">
@@ -847,14 +848,14 @@ function renderAutomationBody() {
       </div></div>
   </div>
 
-  <div class="card" style="margin-bottom:16px"><div class="card-head">${ic('server')}<h3>Proyek di hosting (mis. KRA di my.id)</h3></div>
+  <div class="card" style="margin-bottom:16px"><div class="card-head">${ic('server')}<h3>Proyek KRA di hosting my.id (Exabytes + Cloudflare)</h3></div>
     <div class="card-body grid g3">
-      <div><b class="small">VPS / ada SSH</b><p class="tiny muted">Paling enak: di server hosting jalankan <code>git pull</code> lewat cron, atau webhook ini diarahkan ke domain publik server. App lokal cukup jadi panel kontrol + pencatat alur.</p></div>
-      <div><b class="small">cPanel / shared hosting</b><p class="tiny muted">Pakai <b>Git™ Version Control</b> di cPanel untuk clone repo KRA, lalu aktifkan auto-deploy / cron <code>git pull</code> kalau tersedia. App ini tetap bisa mengatur repo lokalnya.</p></div>
-      <div><b class="small">Cuma FTP (tanpa SSH/Git)</b><p class="tiny muted">Git tidak bisa jalan di hosting. Pakai <b>GitHub Actions → FTP deploy</b>: tiap push, workflow upload file ke my.id. Tidak bergantung pada app/terminal ini nyala.</p></div>
+      <div><b class="small">✅ Jalur utama: Cloudflare Pages</b><p class="tiny muted">Karena tidak ada akses login hosting, deploy lewat <b>GitHub Actions → Cloudflare Pages</b>. Cukup API Token Cloudflare, <b>tanpa akses Exabytes</b> dan tanpa PC nyala. Template siap pakai: <code>.github/workflows/deploy-kra.yml</code> (salin ke repo KRA) + panduan <code>docs/deploy-kra.md</code>.</p></div>
+      <div><b class="small">🔗 Webhook ke app lokal</b><p class="tiny muted">GitHub tidak bisa memanggil <code>127.0.0.1</code>. Pakai <b>Cloudflare Tunnel</b>: <code>scripts\\start-tunnel.ps1</code> → dapat URL publik, lalu isi Payload URL dengan <code>&lt;url&gt;/webhook/github</code>. Tidak perlu port-forwarding.</p></div>
+      <div><b class="small">🛟 Cadangan: FTP / SSH</b><p class="tiny muted">Kalau nanti dapat akun FTP cPanel, ganti <code>KRA_DEPLOY_TARGET=ftp</code> (upload ke <code>/public_html/</code>). Kalau pindah VPS, <code>ssh</code> menjalankan <code>git pull --ff-only</code> di server. Semua ada di workflow yang sama.</p></div>
     </div>
     <div class="divider"></div>
-    <p class="tiny faint" style="margin:0">Mau saya siapkan workflow GitHub Actions (FTP/SSH) atau konfigurasi cron untuk KRA? Beri tahu tipe hosting + URL repo-nya, nanti saya sesuaikan. Untuk membatasi automasi hanya ke KRA, isi <code>automation.repos</code> dengan path repo KRA (satu per baris).</p>
+    <p class="tiny faint" style="margin:0">Batasi automasi hanya ke KRA: isi <code>automation.repos</code> dengan path repo KRA (satu per baris) dan <code>automation.webhookRepository</code> dengan <code>nama-akun/nama-repo</code> KRA. Workflow di repo ini sengaja tidak jalan otomatis — di repo KRA set variable <code>KRA_DEPLOY_ENABLED=true</code>.</p>
   </div>
 
   <div class="card"><div class="card-head">${ic('clock')}<h3>Run terakhir</h3><span class="spacer"></span><small>${runs.length} entri</small></div>

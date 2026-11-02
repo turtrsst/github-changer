@@ -248,6 +248,12 @@ try {
   const hook = await rawPost('/webhook/github', raw, { 'X-GitHub-Event': 'push', 'X-Hub-Signature-256': signature });
   check('webhook push valid menjalankan sync', hook.status === 200 && hook.data.matched >= 1 && hook.data.result?.ok >= 1, JSON.stringify(hook.data).slice(0, 220));
 
+  await request('/api/config', { method: 'PUT', token, body: { values: { 'automation.webhookRepository': 'local/test' } } });
+  const otherRepo = JSON.stringify({ ...payload, repository: { ...payload.repository, full_name: 'orang/lain' } });
+  const otherSig = `sha256=${crypto.createHmac('sha256', 'rahasia-tes').update(otherRepo).digest('hex')}`;
+  const filtered = await rawPost('/webhook/github', otherRepo, { 'X-GitHub-Event': 'push', 'X-Hub-Signature-256': otherSig });
+  check('webhook membatasi repo lewat webhookRepository', filtered.status === 200 && filtered.data.skipped && /webhookRepository/.test(filtered.data.reason || ''), JSON.stringify(filtered.data).slice(0, 200));
+
   const afterAuto = await request('/api/activity', { token });
   check('run automasi tercatat dengan trigger', (afterAuto.data.entries || []).some((e) => e.trigger === 'webhook' || e.trigger === 'manual'));
   await request('/api/automation/toggle', { method: 'POST', token, body: { enabled: false } });

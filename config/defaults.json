@@ -52,6 +52,7 @@
     "webhookEnabled": false,
     "webhookSecret": "",
     "webhookAction": "pull",
+    "webhookRepository": "",
     "webhookBranch": "",
     "deployCommand": ""
   }

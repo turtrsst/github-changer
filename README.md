@@ -177,6 +177,7 @@ Scope yang diminta: `repo read:user user:email workflow`. Token dipakai untuk Gi
 | **Otomatis tiap login Windows** | `powershell -ExecutionPolicy Bypass -File scripts\install-autostart.ps1` | Task Scheduler `GitHub Changer`, auto-restart 3×. Mungkin perlu PowerShell sebagai Administrator |
 | Cek / hapus autostart | `Get-ScheduledTask -TaskName 'GitHub Changer'` / `Unregister-ScheduledTask -TaskName 'GitHub Changer' -Confirm:$false` | |
 | Alternatif lain | `nssm install GitHubChanger "C:\Program Files\nodejs\node.exe" server/index.js` atau `pm2 start server/index.js --name ghc` | Kalau sudah biasa pakai Windows Service / pm2 |
+| Supaya webhook bisa masuk dari internet | `powershell -ExecutionPolicy Bypass -File scripts\start-tunnel.ps1` | Cloudflare Tunnel tanpa port-forwarding; dapat URL publik `https://xxx.trycloudflare.com` |
 
 > Catatan: XAMPP/Apache **tidak** menjalankan app ini. Mau diakses lewat Apache? Aktifkan `mod_proxy` dan reverse-proxy ke `http://127.0.0.1:4173`. Kalau server mati, **scheduler & webhook automasi juga berhenti** — jadi pakai background/autostart kalau mau automasi jalan terus.
 
@@ -201,19 +202,21 @@ Tiap run tercatat di **Alur Git** dengan penanda `trigger: schedule|manual|webho
 
 1. Isi secret (sama persis) di parameter dan di GitHub → **Settings → Webhooks → Add webhook**.
 2. URL: `http://<alamat-publik-app>/webhook/github`, Content type `application/json`, event **Just the push event**.
-3. Signature diverifikasi **HMAC-SHA256** (`X-Hub-Signature-256`); event `ping` dibalas `pong`; branch bisa dibatasi lewat `automation.webhookBranch`.
+3. Signature diverifikasi **HMAC-SHA256** (`X-Hub-Signature-256`); event `ping` dibalas `pong`; `automation.webhookRepository` membatasi repo (mis. `turtrsst/kra`), `automation.webhookBranch` membatasi branch.
 4. Repo lokal yang cocok (dicocokkan dari URL remote / `full_name`) langsung di-`pull`, lalu opsional `automation.deployCommand` (mis. `npm run build`) dijalankan **tanpa shell** (tidak ada `&&`, `|`, `;`).
-5. ⚠️ GitHub harus bisa menjangkau URL itu. `http://127.0.0.1:4173` **tidak bisa** dipanggil dari internet → butuh reverse proxy Apache/domain, port forwarding, atau tunnel (Cloudflare Tunnel / ngrok).
+5. ⚠️ GitHub harus bisa menjangkau URL itu. `http://127.0.0.1:4173` **tidak bisa** dipanggil dari internet → pakai **Cloudflare Tunnel**: `powershell -ExecutionPolicy Bypass -File scripts\start-tunnel.ps1` lalu pakai `https://xxxx.trycloudflare.com/webhook/github` sebagai Payload URL. Lihat `docs/deploy-kra.md`.
 
-**Untuk proyek KRA di hosting `my.id`**, pilih sesuai jenis hosting:
+### Proyek KRA di hosting `my.id` (Exabytes + Cloudflare)
 
-| Hosting | Rekomendasi |
-| --- | --- |
-| **VPS / ada SSH** | Di server hosting: `git clone` repo KRA + cron `git pull` (atau webhook diarahkan ke domain server). App lokal jadi panel kontrol + audit |
-| **cPanel / shared hosting** | Pakai **Git™ Version Control** cPanel untuk clone, aktifkan fitur deploy otomatis / cron `git pull` kalau disediakan |
-| **Cuma FTP (tanpa Git/SSH)** | Git tidak bisa jalan di hosting → pakai **GitHub Actions → FTP deploy**: tiap push, workflow upload file ke `my.id`. Ini **tidak bergantung** pada app/terminal lokal nyala |
+Karena hosting Exabytes **tanpa akses login**, deploy tidak boleh bergantung pada `git pull` di server. Jalur yang disiapkan: **GitHub Actions → Cloudflare Pages**, cukup pakai API Token Cloudflare yang sudah bisa kamu kelola. Workflow siap pakai ada di **`.github/workflows/deploy-kra.yml`** (salin ke repo KRA) dan panduan lengkapnya di **`docs/deploy-kra.md`**:
 
-> Belum saya buatkan workflow Actions-nya karena perlu detail: hosting KRA pakai cPanel/FTP atau VPS+SSH, dan nama/URL repo GitHub-nya. Kasih info itu, nanti saya siapkan `.github/workflows/deploy-kra.yml` + sesuaikan `automation.repos` ke path KRA.
+| Skenario | Target | Butuh akses hosting? |
+| --- | --- | --- |
+| **Utama** — statis/HTML/JS, domain lewat Cloudflare | `KRA_DEPLOY_TARGET=cloudflare` → Cloudflare Pages / Wrangler | ❌ tidak |
+| Cadangan — kalau dapat akun FTP cPanel | `KRA_DEPLOY_TARGET=ftp` → upload `/public_html/` | ✅ ya (FTP) |
+| Pindah ke VPS kelak | `KRA_DEPLOY_TARGET=ssh` → `git pull --ff-only` di server | ✅ ya (SSH) |
+
+Di repo ini workflow sengaja **tidak jalan otomatis** (guard `vars.KRA_DEPLOY_ENABLED`); di repo KRA set variable itu `true` supaya tiap push ke `main` langsung deploy. Isi juga `automation.repos` dengan path repo KRA kalau mau scheduler app lokal hanya menyentuh KRA, dan `automation.webhookRepository=turtrsst/kra` (ganti sesuai repo aslinya).
 
 ---
 
@@ -305,7 +308,9 @@ server/
   lib/git.js          eksekutor Git aman + metadata from/to
   lib/automation.js   scheduler, webhook HMAC, deploy command
   lib/util.js         helper
-scripts/start-hidden.ps1, stop.ps1, install-autostart.ps1  # background/autostart Windows
+scripts/start-hidden.ps1, stop.ps1, install-autostart.ps1, start-tunnel.ps1  # background/autostart/tunnel Windows
+.github/workflows/deploy-kra.yml  # TEMPLATE auto-deploy Cloudflare Pages / FTP / SSH untuk repo KRA
+docs/deploy-kra.md               # panduan Exabytes + Cloudflare (tanpa akses hosting)
 public/               index.html, styles.css, app.js (vanilla, tanpa build)
 scripts/
   git-askpass.js      kredensial untuk push/pull HTTPS
