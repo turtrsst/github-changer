@@ -93,7 +93,7 @@ const S = {
   actFilter: { op: '', accountId: '', repo: '' },
   drawer: null, drawerTab: 'overview', detail: null, terminal: [],
   modal: null, flow: null, flowHost: 'login', flowTimer: null, tickTimer: null,
-  dropdown: false, es: null, demo: false, busy: false,
+  dropdown: false, es: null, demo: false, demoParamBanner: '', busy: false,
   token: LS.get('ghc.token') || '',
   pin: LS.get('ghc.pin') || '',
   theme: null, accent: null,
@@ -247,7 +247,8 @@ async function loadActivity() {
 }
 
 async function loadParams() {
-  if (S.demo) return;
+  // GET /api/parameters juga bisa diakses sebelum akun pertama ada (mode setup),
+  // jadi mode pratinjau bisa menampilkan parameter asli secara read-only.
   try { S.params = await api('/api/parameters'); } catch (error) { S.errors.params = error.message; }
   if (S.view === 'params') renderParamsBody();
 }
@@ -337,6 +338,7 @@ function enterDemo() {
   if (S.es) { S.es.close(); S.es = null; }
   render();
   toast('Mode pratinjau', 'Data contoh saja — login GitHub untuk operasi nyata.', 'warn');
+  loadParams().catch(() => {});
 }
 
 /* ----------------------------- Render: root ----------------------------- */
@@ -771,10 +773,11 @@ function paramsHTML() {
 }
 
 function paramInputHTML(f) {
-  const dis = f.locked ? 'disabled' : '';
+  const readOnly = f.locked || S.demo;
+  const dis = readOnly ? 'disabled' : '';
   const common = `data-param="${esc(f.path)}" ${dis}`;
   if (f.type === 'boolean') {
-    return `<div class="switch-wrap"><div class="switch ${f.value ? 'on' : ''}" ${common} data-action="param-toggle" role="switch" tabindex="0"></div><span class="tiny muted">${f.value ? 'Aktif' : 'Nonaktif'}</span></div>`;
+    return `<div class="switch-wrap"><div class="switch ${f.value ? 'on' : ''}" ${common} ${readOnly ? '' : 'data-action="param-toggle"'} role="switch" tabindex="0"></div><span class="tiny muted">${f.value ? 'Aktif' : 'Nonaktif'}</span></div>`;
   }
   if (f.type === 'select') {
     return `<select class="input" ${common}>${f.options.map((o) => `<option value="${esc(o)}" ${o === f.value ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>`;
@@ -791,17 +794,21 @@ function paramInputHTML(f) {
 function renderParamsBody() {
   const root = $('#param-body');
   if (!root) return;
-  if (S.demo || !S.params) {
-    root.innerHTML = `<div class="card pad"><div class="empty">${S.demo ? 'Parameter asli hanya tersedia setelah login GitHub.' : 'Memuat parameter…'}</div></div>
+  if (!S.params) {
+    root.innerHTML = `<div class="card pad"><div class="empty">${S.demo ? 'Memuat parameter dari server…' : 'Memuat parameter…'}</div></div>
       ${oauthGuideHTML()}${securityHTML()}`;
     return;
   }
+  if (S.demo) {
+    // Pratinjau: tampilkan parameter asli, tapi semua input dikunci.
+    S.demoParamBanner = `<div class="card pad row" style="margin-bottom:14px;border-color:color-mix(in srgb,var(--warn) 40%,var(--border))">${ic('eye')}<span class="small">Mode pratinjau — parameter <b>hanya bisa dibaca</b>. Login GitHub untuk mengubahnya.</span></div>`;
+  } else S.demoParamBanner = '';
   const groups = new Map();
   for (const f of S.params.fields) {
     if (!groups.has(f.section)) groups.set(f.section, []);
     groups.get(f.section).push(f);
   }
-  root.innerHTML = [...groups.entries()].map(([section, fields]) => `<div class="card param-group"><div class="card-head">${ic(section.includes('Arena') ? 'sparkles' : section.includes('Otentikasi') ? 'shield' : section.includes('Workspace') ? 'folder' : section.includes('Tampilan') ? 'sun' : 'sliders')}<h3>${esc(section)}</h3><span class="spacer"></span><small>${fields.length} parameter</small></div>
+  root.innerHTML = (S.demoParamBanner || '') + [...groups.entries()].map(([section, fields]) => `<div class="card param-group"><div class="card-head">${ic(section.includes('Arena') ? 'sparkles' : section.includes('Otentikasi') ? 'shield' : section.includes('Workspace') ? 'folder' : section.includes('Tampilan') ? 'sun' : 'sliders')}<h3>${esc(section)}</h3><span class="spacer"></span><small>${fields.length} parameter</small></div>
     <div class="card-body" style="padding-top:4px;padding-bottom:4px">
     ${fields.map((f) => `<div class="param-row">
       <div><div class="param-label">${esc(f.label)}
