@@ -206,17 +206,27 @@ Tiap run tercatat di **Alur Git** dengan penanda `trigger: schedule|manual|webho
 4. Repo lokal yang cocok (dicocokkan dari URL remote / `full_name`) langsung di-`pull`, lalu opsional `automation.deployCommand` (mis. `npm run build`) dijalankan **tanpa shell** (tidak ada `&&`, `|`, `;`).
 5. ⚠️ GitHub harus bisa menjangkau URL itu. `http://127.0.0.1:4173` **tidak bisa** dipanggil dari internet → pakai **Cloudflare Tunnel**: `powershell -ExecutionPolicy Bypass -File scripts\start-tunnel.ps1` lalu pakai `https://xxxx.trycloudflare.com/webhook/github` sebagai Payload URL. Lihat `docs/deploy-kra.md`.
 
-### Proyek KRA di hosting `my.id` (Exabytes + Cloudflare)
+### Proyek KRA — `turtrsst/kantor-rama-ai` (sudah dicek)
 
-Karena hosting Exabytes **tanpa akses login**, deploy tidak boleh bergantung pada `git pull` di server. Jalur yang disiapkan: **GitHub Actions → Cloudflare Pages**, cukup pakai API Token Cloudflare yang sudah bisa kamu kelola. Workflow siap pakai ada di **`.github/workflows/deploy-kra.yml`** (salin ke repo KRA) dan panduan lengkapnya di **`docs/deploy-kra.md`**:
+Repo aslinya **PHP 8.1+ / MySQL / Electron**, domain `kantor-rama-ai.my.id` +
+`automation.kantor-rama-ai.my.id` (service Node N100N :5679), sumber di
+`\\100.76.172.67\c$\xampp\htdocs\kantor-rama-ai\`. Karena **bukan static**,
+**Cloudflare Pages tidak bisa dipakai**. Yang benar: push → webhook bertanda
+tangan (lewat **Cloudflare Tunnel**) → app ini jalankan `git pull` **di mesin
+yang menyajikan domain**. PHP langsung baca file baru; N100N perlu restart.
 
-| Skenario | Target | Butuh akses hosting? |
-| --- | --- | --- |
-| **Utama** — statis/HTML/JS, domain lewat Cloudflare | `KRA_DEPLOY_TARGET=cloudflare` → Cloudflare Pages / Wrangler | ❌ tidak |
-| Cadangan — kalau dapat akun FTP cPanel | `KRA_DEPLOY_TARGET=ftp` → upload `/public_html/` | ✅ ya (FTP) |
-| Pindah ke VPS kelak | `KRA_DEPLOY_TARGET=ssh` → `git pull --ff-only` di server | ✅ ya (SSH) |
+| Berkas | Isi |
+| --- | --- |
+| `docs/deploy-kra.md` | Hasil pengecekan repo, arsitektur, setup, checklist keamanan (default password `123456`, MySQL root tanpa password, terminal bridge), troubleshooting |
+| `.github/workflows/deploy-kra.yml` | Template untuk repo KRA: CI `php -l` + `node --check` → POST webhook HMAC setelah CI hijau; cadangan FTP |
+| `config/cloudflared-kra.yml.example` | Tunnel 3 hostname: KRA :8088, N100N :5679, webhook app :4173 |
 
-Di repo ini workflow sengaja **tidak jalan otomatis** (guard `vars.KRA_DEPLOY_ENABLED`); di repo KRA set variable itu `true` supaya tiap push ke `main` langsung deploy. Isi juga `automation.repos` dengan path repo KRA kalau mau scheduler app lokal hanya menyentuh KRA, dan `automation.webhookRepository=turtrsst/kra` (ganti sesuai repo aslinya).
+Nilai konkret: `automation.repos=C:\xampp\htdocs\kantor-rama-ai`,
+`automation.webhookRepository=turtrsst/kantor-rama-ai`, `webhookBranch=main`.
+⚠️ `main` (1417 file) **belum** berisi bundle N100N/CI/`.htaccess` yang ada di
+branch `arena/*` — pastikan branch yang di-pull sesuai yang dipakai domain.
+Workflow di repo ini sengaja tidak aktif (guard `vars.KRA_DEPLOY_ENABLED`).
+Saya **tidak mengubah repo KRA**; template tinggal disalin ke sana.
 
 ---
 
@@ -309,8 +319,9 @@ server/
   lib/automation.js   scheduler, webhook HMAC, deploy command
   lib/util.js         helper
 scripts/start-hidden.ps1, stop.ps1, install-autostart.ps1, start-tunnel.ps1  # background/autostart/tunnel Windows
-.github/workflows/deploy-kra.yml  # TEMPLATE auto-deploy Cloudflare Pages / FTP / SSH untuk repo KRA
-docs/deploy-kra.md               # panduan Exabytes + Cloudflare (tanpa akses hosting)
+.github/workflows/deploy-kra.yml  # TEMPLATE CI PHP + webhook deploy / FTP untuk repo KRA
+docs/deploy-kra.md               # hasil pengecekan KRA + panduan deploy PHP/MySQL via Cloudflare Tunnel
+config/cloudflared-kra.yml.example  # contoh tunnel 3 hostname KRA/N100N/GitHub Changer
 public/               index.html, styles.css, app.js (vanilla, tanpa build)
 scripts/
   git-askpass.js      kredensial untuk push/pull HTTPS

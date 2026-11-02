@@ -1,0 +1,37 @@
+# Contoh Cloudflare Tunnel UNTUK SATU MESIN yang menjalankan semuanya.
+# Salin ke C:\Users\Administrator\.cloudflared\config.yml, ganti <UUID> & path
+# credentials-file dengan hasil `cloudflared tunnel create kra`.
+#
+# DNS (dibantu operator Cloudflare):
+#   CNAME kantor-rama-ai.my.id            -> <UUID>.cfargotunnel.com
+#   CNAME automation.kantor-rama-ai.my.id -> <UUID>.cfargotunnel.com
+#   CNAME ghc.kantor-rama-ai.my.id        -> <UUID>.cfargotunnel.com
+#
+# Lalu: powershell -ExecutionPolicy Bypass -File scripts\start-tunnel.ps1 -Mode named -TunnelName kra
+tunnel: <UUID>
+credentials-file: C:\Users\Administrator\.cloudflared\<UUID>.json
+
+ingress:
+  # KRA: PHP built-in server (`Start KRA.bat`, port 8088) atau Apache :80
+  - hostname: kantor-rama-ai.my.id
+    service: http://127.0.0.1:8088
+
+  # N100N: service Node persisten, port 5679 (harus tetap nyala + disk persisten)
+  - hostname: automation.kantor-rama-ai.my.id
+    service: http://127.0.0.1:5679
+
+  # GitHub Changer: dipakai GitHub / Actions buat kirim webhook deploy
+  - hostname: ghc.kantor-rama-ai.my.id
+    service: http://127.0.0.1:4173
+    originRequest:
+      noTLSVerify: false
+
+  # Fallback wajib: hostname tak dikenal jangan diteruskan ke service lokal
+  - service: http_status:404
+
+# ⚠️ KEAMANAN — KRA punya KraTerminalBridge, KraAuth, dan MySQL default
+# root/tanpa password. JANGAN expose hostname KRA ke internet terbuka tanpa
+# Cloudflare Access (Zero Trust → Access → Application) + autentikasi.
+# Untuk ghc.* cukup secret webhook HMAC, tapi tetap disarankan Access.
+# Pastikan pula api/config.json, n100n/.env, data/ dan .temp/ tidak bisa
+# diakses lewat HTTP (lihat .htaccess di branch arena/*).

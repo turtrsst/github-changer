@@ -4,6 +4,10 @@
 # Mode "quick": TANPA login Cloudflare, dapat URL acak https://xxx.trycloudflare.com
 # Mode "named": pakai tunnel yang sudah dibuat (cloudflared tunnel create kra)
 #              + DNS record CNAME ke <UUID>.cfargotunnel.com di Cloudflare.
+#              Contoh config 3 hostname (KRA/N100N/GitHub Changer):
+#              config/cloudflared-kra.yml.example
+#
+# Untuk port selain 4173: -Port 8088 (KRA PHP) atau -Port 5679 (N100N).
 #
 # Usage:
 #   powershell -ExecutionPolicy Bypass -File scripts\start-tunnel.ps1
@@ -11,7 +15,9 @@
 param(
     [ValidateSet('quick', 'named')][string]$Mode = 'quick',
     [string]$TunnelName = 'kra',
-    [int]$Port = 4173
+    # 4173 = GitHub Changer (webhook), 8088 = KRA PHP, 5679 = N100N
+    [int]$Port = 4173,
+    [string]$ConfigPath = (Join-Path $env:USERPROFILE '.cloudflared\config.yml')
 )
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
@@ -30,8 +36,14 @@ if (-not $cmd) {
 Remove-Item $log -Force -ErrorAction SilentlyContinue
 if ($Mode -eq 'quick') {
     $args = @('tunnel', '--url', "http://127.0.0.1:$Port", '--logfile', $log)
+    Write-Host "Mode quick meneruskan port $Port (4173=webhook app, 8088=KRA PHP, 5679=N100N)."
 } else {
-    $args = @('tunnel', '--logfile', $log, 'run', $TunnelName)
+    if (-not (Test-Path $ConfigPath)) {
+        Write-Host "Config belum ada: $ConfigPath" -ForegroundColor Yellow
+        Write-Host 'Contoh siap pakai: config\cloudflared-kra.yml.example'
+        exit 1
+    }
+    $args = @('tunnel', '--config', $ConfigPath, '--logfile', $log, 'run', $TunnelName)
 }
 
 $proc = Start-Process -FilePath $cmd.Source -ArgumentList $args -WorkingDirectory $root `
@@ -58,7 +70,10 @@ if ($Mode -eq 'quick') {
         Write-Host "URL belum muncul. Cek log: $log" -ForegroundColor Yellow
     }
 } else {
-    Write-Host "Tunnel '$TunnelName' aktif. Webhook URL: https://<domain-kamu>/webhook/github"
+    Write-Host "Tunnel '$TunnelName' aktif."
+    Write-Host 'KRA        : https://kantor-rama-ai.my.id'
+    Write-Host 'N100N      : https://automation.kantor-rama-ai.my.id'
+    Write-Host 'Webhook    : https://ghc.kantor-rama-ai.my.id/webhook/github' -ForegroundColor Cyan
 }
 Write-Host "Log: $log"
 Write-Host 'Hentikan: Stop-Process -Id (Get-Content data\cloudflared.pid) -Force'

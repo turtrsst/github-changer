@@ -146,6 +146,7 @@ try {
   const params = await request('/api/parameters', { token });
   check('parameter terekspos', Array.isArray(params.data.fields) && params.data.fields.length > 20, `jumlah ${params.data.fields?.length}`);
   check('parameter git.authHost ada', params.data.fields?.some((f) => f.path === 'git.authHost') === true);
+  check('parameter webhookRepository ada', params.data.fields?.some((f) => f.path === 'automation.webhookRepository') === true);
 
   const absoluteGit = await request('/api/config', { method: 'PUT', token, body: { values: { 'git.binary': '/usr/bin/git' } } });
   check('git.binary path absolut bisa disimpan', absoluteGit.status === 200);

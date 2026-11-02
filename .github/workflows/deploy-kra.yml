@@ -1,36 +1,43 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# TEMPLATE DEPLOY KRA — salin file ini ke repo proyek KRA kamu.
+# TEMPLATE DEPLOY KRA  →  salin file ini ke repo turtrsst/kantor-rama-ai
 #
-# Kenapa ada di repo github-changer? Supaya gampang disalin & versioned.
-# Di repo INI workflow sengaja TIDAK jalan otomatis: job punya guard
-# `vars.KRA_DEPLOY_ENABLED == 'true'`. Di repo KRA, set variable itu = true.
+# Fakta lapangan (dicek dari repo publik 2026-11-02):
+#   • KRA = PHP 8.1+ / MySQL (kra_db) / Apache atau `php -S :8088`,
+#     plus Electron desktop. BUKAN static → Cloudflare Pages TIDAK bisa dipakai.
+#   • Domain: https://kantor-rama-ai.my.id
+#             https://automation.kantor-rama-ai.my.id  (service Node N100N :5679)
+#   • Server sumber: \\100.76.172.67\c$\xampp\htdocs\kantor-rama-ai\
+#   • `main` = 1417 file (KRA inti). Branch arena/* = 2599–3912 file, berisi
+#     bundle N100N + CI. Deploy docs (docs/N100N_DEPLOYMENT.md) ada di arena/*.
+#   • api/config.json, .env, .temp/, node_modules/ SUDAH di-.gitignore ✅
 #
-# Cocok untuk: hosting Exabytes (tanpa akses login/cPanel) + DNS/proxy Cloudflare.
-# Jalur UTAMA = Cloudflare Pages: cuma butuh API Token Cloudflare, TIDAK butuh
-# akses ke hosting. FTP disediakan sebagai cadangan kalau kamu punya akun FTP.
+# PRINSIP: "Push source ke GitHub saja belum mengubah proses yang berjalan."
+# Yang harus update adalah MESIN yang menyajikan domain. Karena itu deploy
+# dilakukan lewat webhook bertanda tangan ke GitHub Changer yang jalan di mesin
+# itu (lewat Cloudflare Tunnel), lalu app menjalankan `git pull` + audit.
+# FTP hanya cadangan kalau nanti dapat kredensial cPanel Exabytes.
 #
-# Setup di repo KRA → Settings → Secrets and variables → Actions:
-#   Variables: KRA_DEPLOY_ENABLED=true, KRA_DEPLOY_TARGET=cloudflare|ftp|ssh,
-#              KRA_CF_PROJECT=nama-project-pages, KRA_BUILD_DIR=./dist,
-#              KRA_CF_BRANCH=main, KRA_REMOTE_DIR=/public_html/,
-#              KRA_DEPLOY_PATH=/home/user/kra
-#   Secrets  : CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID   (Cloudflare)
-#              FTP_SERVER, FTP_USERNAME, FTP_PASSWORD          (FTP)
-#              SSH_HOST, SSH_USER, SSH_KEY, SSH_BRANCH         (SSH, opsional)
+# Di repo INI workflow sengaja tidak aktif (guard vars.KRA_DEPLOY_ENABLED).
+# Di repo KRA: Settings → Secrets and variables → Actions
+#   Variables: KRA_DEPLOY_ENABLED=true, KRA_DEPLOY_TARGET=notify|ftp,
+#              KRA_PHP_VERSION=8.3
+#   Secrets  : KRA_DEPLOY_WEBHOOK_URL   = https://ghc.kantor-rama-ai.my.id/webhook/github
+#              KRA_DEPLOY_WEBHOOK_SECRET = sama dengan automation.webhookSecret
+#              FTP_SERVER / FTP_USERNAME / FTP_PASSWORD (opsional, mode ftp)
 # ─────────────────────────────────────────────────────────────────────────────
 name: Deploy KRA
 
 on:
   push:
-    branches: [main, master]
+    branches: [main, 'arena/**']
   workflow_dispatch:
     inputs:
       target:
         description: 'Target deploy'
         required: true
-        default: 'cloudflare'
+        default: 'notify'
         type: choice
-        options: [cloudflare, ftp, ssh]
+        options: [notify, ftp, verify-only]
 
 concurrency:
   group: kra-deploy
@@ -40,58 +47,87 @@ permissions:
   contents: read
 
 jobs:
-  deploy:
+  # ── 1. CI: jangan deploy kalau kode PHP/JS rusak ──────────────────────────
+  verify:
     runs-on: ubuntu-latest
-    # Guard: di repo github-changer hanya bisa dipicu manual; di repo KRA aktif
-    # otomatis tiap push setelah KRA_DEPLOY_ENABLED diset.
-    if: github.event_name == 'workflow_dispatch' || vars.KRA_DEPLOY_ENABLED == 'true'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ vars.KRA_PHP_VERSION || '8.3' }}
+          extensions: mbstring, json, curl, pdo, pdo_mysql
+          tools: none
+
+      - name: PHP syntax check
+        run: |
+          if [ -d api ] || [ -d tools ]; then
+            find api tools -name '*.php' -print0 2>/dev/null | xargs -0 -n1 php -l
+          fi
+
+      - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: '20'
 
-      - name: Install & build (kalau proyek punya package.json)
+      - name: JavaScript syntax check
         run: |
-          if [ -f package.json ]; then
-            if [ -f package-lock.json ]; then npm ci; else npm install; fi
-            npm run build --if-present
-          else
-            echo "Tidak ada package.json — deploy file apa adanya (PHP/static)."
-          fi
+          for d in web desktop tools; do
+            if [ -d "$d" ]; then
+              find "$d" -type f \( -name '*.js' -o -name '*.mjs' -o -name '*.cjs' \) -print0 \
+                | xargs -0 -n1 node --check
+            fi
+          done
 
-      - name: Tentukan target & direktori
-        id: cfg
+  # ── 2. DEPLOY UTAMA: sinyal ke mesin yang menyajikan domain ───────────────
+  # Payload dibuat menyerupai webhook `push` GitHub, ditandatangani HMAC-SHA256
+  # supaya diterima endpoint /webhook/github GitHub Changer.
+  notify:
+    needs: verify
+    if: >-
+      (github.event_name == 'workflow_dispatch' && inputs.target == 'notify') ||
+      (github.event_name == 'push' && vars.KRA_DEPLOY_ENABLED == 'true' && vars.KRA_DEPLOY_TARGET != 'ftp')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Kirim sinyal deploy (git pull di server KRA)
         env:
-          INPUT_TARGET: ${{ inputs.target }}
-          VAR_TARGET: ${{ vars.KRA_DEPLOY_TARGET }}
-          VAR_BUILD_DIR: ${{ vars.KRA_BUILD_DIR }}
+          HOOK_URL: ${{ secrets.KRA_DEPLOY_WEBHOOK_URL }}
+          HOOK_SECRET: ${{ secrets.KRA_DEPLOY_WEBHOOK_SECRET }}
+          REPO: ${{ github.repository }}
+          REF: ${{ github.ref }}
         run: |
-          target="${INPUT_TARGET:-${VAR_TARGET:-cloudflare}}"
-          build_dir="${VAR_BUILD_DIR:-.}"
-          echo "target=$target" >> "$GITHUB_OUTPUT"
-          echo "build_dir=$build_dir" >> "$GITHUB_OUTPUT"
-          echo "Target deploy: $target · direktori: $build_dir"
+          set -euo pipefail
+          if [ -z "${HOOK_URL:-}" ] || [ -z "${HOOK_SECRET:-}" ]; then
+            echo "::warning::KRA_DEPLOY_WEBHOOK_URL / SECRET belum diisi — deploy dilewati."
+            exit 0
+          fi
+          payload=$(jq -nc \
+            --arg ref "$REF" \
+            --arg repo "$REPO" \
+            --arg clone "https://github.com/$REPO.git" \
+            '{ref:$ref, repository:{full_name:$repo, clone_url:$clone, html_url:"https://github.com/"+$repo}}')
+          sig="sha256=$(printf '%s' "$payload" | openssl dgst -sha256 -hmac "$HOOK_SECRET" -hex | awk '{print $NF}')"
+          echo "Mengirim sinyal deploy untuk $REPO ($REF)…"
+          curl -fsS --max-time 30 -X POST "$HOOK_URL" \
+            -H 'Content-Type: application/json' \
+            -H 'X-GitHub-Event: push' \
+            -H "X-Hub-Signature-256: $sig" \
+            --data-raw "$payload" | jq . || true
 
-      # ------------------- JALUR UTAMA: Cloudflare Pages -------------------
-      # Tidak perlu login Exabytes. Cloudflare yang sudah kamu kelola yang deploy.
-      - name: Deploy ke Cloudflare Pages
-        if: steps.cfg.outputs.target == 'cloudflare'
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: >-
-            pages deploy "${{ steps.cfg.outputs.build_dir }}"
-            --project-name="${{ vars.KRA_CF_PROJECT || 'kra' }}"
-            --branch="${{ vars.KRA_CF_BRANCH || 'main' }}"
+  # ── 3. CADANGAN: upload FTP kalau dapat akses cPanel Exabytes ────────────
+  ftp:
+    needs: verify
+    if: >-
+      (github.event_name == 'workflow_dispatch' && inputs.target == 'ftp') ||
+      (github.event_name == 'push' && vars.KRA_DEPLOY_ENABLED == 'true' && vars.KRA_DEPLOY_TARGET == 'ftp')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      # ------------------- CADANGAN: FTP / FTPS (cPanel) -------------------
-      - name: Deploy lewat FTP
-        if: steps.cfg.outputs.target == 'ftp'
+      - name: Upload ke document root hosting
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
           server: ${{ secrets.FTP_SERVER }}
@@ -99,34 +135,32 @@ jobs:
           password: ${{ secrets.FTP_PASSWORD }}
           protocol: ${{ vars.KRA_FTP_PROTOCOL || 'ftps' }}
           port: ${{ vars.KRA_FTP_PORT || '21' }}
-          local-dir: ${{ steps.cfg.outputs.build_dir }}
+          local-dir: ./
           server-dir: ${{ vars.KRA_REMOTE_DIR || '/public_html/' }}
+          # JANGAN pernah upload konfigurasi/rahasia/data runtime.
           exclude: |
             **/.git*
             **/.git*/**
             **/node_modules/**
+            **/vendor/**
             **/.env*
+            **/api/config.json
+            **/api/config.local.json
+            **/api/integrations.local.*
+            **/.temp/**
+            **/data/**
+            **/*.log
             **/.github/**
 
-      # ------------------- OPSIONAL: VPS / SSH git pull -------------------
-      - name: Deploy lewat SSH (git pull di server)
-        if: steps.cfg.outputs.target == 'ssh'
-        uses: appleboy/ssh-action@v1.0.3
-        env:
-          DEPLOY_PATH: ${{ vars.KRA_DEPLOY_PATH || '/home/user/kra' }}
-          DEPLOY_BRANCH: ${{ vars.KRA_CF_BRANCH || 'main' }}
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_KEY }}
-          envs: DEPLOY_PATH,DEPLOY_BRANCH
-          script: |
-            cd "$DEPLOY_PATH" && git fetch origin && git pull --ff-only origin "$DEPLOY_BRANCH"
-
+  # ── 4. Ringkasan ──────────────────────────────────────────────────────────
+  summary:
+    if: always()
+    needs: [verify, notify, ftp]
+    runs-on: ubuntu-latest
+    steps:
       - name: Ringkasan
-        if: always()
         run: |
-          echo "### Deploy KRA (${{ steps.cfg.outputs.target }})" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Deploy KRA" >> "$GITHUB_STEP_SUMMARY"
           echo "- Commit: \`${{ github.sha }}\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- Branch: \`${{ github.ref_name }}\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Status: \`${{ job.status }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- CI: \`${{ needs.verify.result }}\`" >> "$GITHUB_STEP_SUMMARY"

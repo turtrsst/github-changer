@@ -848,14 +848,14 @@ function renderAutomationBody() {
       </div></div>
   </div>
 
-  <div class="card" style="margin-bottom:16px"><div class="card-head">${ic('server')}<h3>Proyek KRA di hosting my.id (Exabytes + Cloudflare)</h3></div>
+  <div class="card" style="margin-bottom:16px"><div class="card-head">${ic('server')}<h3>KRA · kantor-rama-ai.my.id (PHP + MySQL, bukan static)</h3></div>
     <div class="card-body grid g3">
-      <div><b class="small">✅ Jalur utama: Cloudflare Pages</b><p class="tiny muted">Karena tidak ada akses login hosting, deploy lewat <b>GitHub Actions → Cloudflare Pages</b>. Cukup API Token Cloudflare, <b>tanpa akses Exabytes</b> dan tanpa PC nyala. Template siap pakai: <code>.github/workflows/deploy-kra.yml</code> (salin ke repo KRA) + panduan <code>docs/deploy-kra.md</code>.</p></div>
-      <div><b class="small">🔗 Webhook ke app lokal</b><p class="tiny muted">GitHub tidak bisa memanggil <code>127.0.0.1</code>. Pakai <b>Cloudflare Tunnel</b>: <code>scripts\\start-tunnel.ps1</code> → dapat URL publik, lalu isi Payload URL dengan <code>&lt;url&gt;/webhook/github</code>. Tidak perlu port-forwarding.</p></div>
-      <div><b class="small">🛟 Cadangan: FTP / SSH</b><p class="tiny muted">Kalau nanti dapat akun FTP cPanel, ganti <code>KRA_DEPLOY_TARGET=ftp</code> (upload ke <code>/public_html/</code>). Kalau pindah VPS, <code>ssh</code> menjalankan <code>git pull --ff-only</code> di server. Semua ada di workflow yang sama.</p></div>
+      <div><b class="small">✅ Deploy = pull di mesin penyaji</b><p class="tiny muted"><code>turtrsst/kantor-rama-ai</code> itu <b>PHP 8.1+ / MySQL / Electron</b> — Cloudflare Pages <b>tidak bisa</b>. Push GitHub saja tidak mengubah proses yang jalan; yang harus update adalah mesin <code>&#92;&#92;100.76.172.67&#92;c$&#92;xampp&#92;htdocs&#92;kantor-rama-ai</code>. App ini yang melakukan <code>git pull</code> otomatis di sana.</p></div>
+      <div><b class="small">🔗 Cloudflare Tunnel</b><p class="tiny muted">Domain <code>kantor-rama-ai.my.id</code> (PHP :8088), <code>automation.kantor-rama-ai.my.id</code> (N100N :5679), dan webhook <code>ghc.&lt;domain&gt;/webhook/github</code> (:4173). Contoh config 3 hostname: <code>config/cloudflared-kra.yml.example</code>. ⚠️ Lindungi KRA dengan Cloudflare Access — ada terminal bridge & MySQL default.</p></div>
+      <div><b class="small">⚙️ CI + sinyal deploy</b><p class="tiny muted">Template <code>.github/workflows/deploy-kra.yml</code> (salin ke repo KRA): cek <code>php -l</code> + <code>node --check</code>, lalu kirim webhook bertanda tangan HMAC ke app ini setelah CI hijau. Cadangan FTP tersedia kalau dapat akun cPanel. Panduan: <code>docs/deploy-kra.md</code>.</p></div>
     </div>
     <div class="divider"></div>
-    <p class="tiny faint" style="margin:0">Batasi automasi hanya ke KRA: isi <code>automation.repos</code> dengan path repo KRA (satu per baris) dan <code>automation.webhookRepository</code> dengan <code>nama-akun/nama-repo</code> KRA. Workflow di repo ini sengaja tidak jalan otomatis — di repo KRA set variable <code>KRA_DEPLOY_ENABLED=true</code>.</p>
+    <p class="tiny faint" style="margin:0">Batasi automasi hanya ke KRA: <code>automation.repos=C:\\xampp\\htdocs\\kantor-rama-ai</code>, <code>automation.webhookRepository=turtrsst/kantor-rama-ai</code>, <code>automation.webhookBranch=main</code>. Perlu diingat: <code>main</code> (1417 file) belum berisi bundle N100N/CI yang ada di branch <code>arena/*</code> — pastikan branch yang dipull memang yang dipakai domain.</p>
   </div>
 
   <div class="card"><div class="card-head">${ic('clock')}<h3>Run terakhir</h3><span class="spacer"></span><small>${runs.length} entri</small></div>
