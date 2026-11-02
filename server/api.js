@@ -82,6 +82,7 @@ export async function handleApi(req, res, url, bus) {
       environment: {
         git: env.git, gh: env.gh, node: env.node, platform: env.platform,
         roots: env.roots, projectRoot: env.projectRoot, askpass: env.askpass,
+        isWindows: env.isWindows,
       },
     });
   }

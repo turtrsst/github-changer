@@ -18,8 +18,10 @@ const env = await git.environment(cfg);
 line('Node.js', `${process.version} (${process.platform}/${process.arch})`, Number(process.versions.node.split('.')[0]) >= 18);
 line('Project root', PROJECT_ROOT);
 line('Data dir', fs.existsSync(DATA_DIR) ? DATA_DIR : `${DATA_DIR} (dibuat saat server start)`, true);
+line('Platform', env.isWindows ? `Windows (${env.platform})` : env.platform);
 line('Git binary', env.git.ok ? `${env.git.path} · ${env.git.version}` : env.git.error, env.git.ok);
 line('GIT_ASKPASS', fs.existsSync(env.askpass) ? env.askpass : 'TIDAK ADA', fs.existsSync(env.askpass));
+line('Host autentikasi', cfg.git.authHost);
 line('GitHub CLI', env.gh.ok ? env.gh.version : 'opsional, tidak terinstal', true);
 line('Server', `http://${cfg.server.host}:${cfg.server.port}`);
 line('OAuth Client ID', cfg.auth.clientId ? `${cfg.auth.clientId.slice(0, 10)}…` : 'BELUM DIATUR', Boolean(cfg.auth.clientId));
@@ -43,6 +45,8 @@ for (const root of env.roots) {
 
 console.log('\n  Saran:');
 if (!cfg.auth.clientId) warn('Login GitHub', 'isi auth.clientId di halaman Parameters atau GITHUB_CLIENT_ID di .env');
-if (!env.git.ok) warn('Git', 'instal Git atau atur parameter git.binary ke path yang benar');
+if (!env.git.ok) warn('Git', env.isWindows
+  ? 'instal Git for Windows, atau set git.binary = C:\\Program Files\\Git\\cmd\\git.exe (bisa lewat .env: GHC_GIT_BINARY)'
+  : 'instal Git atau atur parameter git.binary ke path yang benar');
 if (cfg.server.host === '0.0.0.0' && !process.env.APP_PIN) warn('Keamanan', 'server terbuka ke LAN — pertimbangkan APP_PIN atau bind 127.0.0.1');
 console.log('  ✓ Jalankan app dengan: npm start\n');

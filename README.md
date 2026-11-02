@@ -21,7 +21,7 @@ Dibuat buat dipasang di komputer/server kamu sendiri: path project **menyesuaika
 ## Kebutuhan
 
 - **Node.js ≥ 18** (disarankan 20/22)
-- **Git** terinstal di server (dicek otomatis lewat `PATH`)
+- **Git ≥ 2.31** terinstal di server (auto-detect lintas-platform: `where.exe` di Windows, `which` + `PATH`/`PATHEXT` di Linux/macOS)
 - Koneksi internet dari **server** ke `github.com` & `api.github.com` untuk login + GitHub API (operasi Git ke remote lokal/LAN tetap bisa tanpa internet)
 - Satu **GitHub OAuth App** dengan *Device Flow* aktif (cukup Client ID)
 - `gh` CLI opsional (hanya ditampilkan info versinya)
@@ -64,6 +64,22 @@ HOST=0.0.0.0 PORT=4173 npm start
 ```
 
 > Di preview Arena app dijalankan dengan `HOST=0.0.0.0` supaya bisa diakses browser. Untuk pemakaian pribadi, defaultnya `127.0.0.1` (lebih aman).
+
+## 3. Catatan Windows / XAMPP
+
+Kasus nyata: clone di `C:\xampp\htdocs\github-changer\github-changer`, Node v26, Windows 10. Beberapa hal yang perlu diperhatikan:
+
+- **App ini server Node.js sendiri, bukan PHP/Apache.** XAMPP/Apache **tidak** menjalankan kode ini. Jalankan `npm start`, lalu buka **<http://localhost:4173>** — bukan `http://localhost/github-changer/...`. Kalau memang ingin lewat Apache, aktifkan `mod_proxy` dan reverse-proxy ke `http://127.0.0.1:4173`.
+- **Jangan tambahkan `# komentar` setelah perintah di `cmd`** (itu bukan komentar di cmd, diteruskan sebagai argumen). Cukup ketik `npm start`. Di PowerShell `#` baru berfungsi sebagai komentar.
+- **Deteksi Git sekarang lintas-platform**: `where.exe` → scan `PATH` + `PATHEXT` → lokasi umum Git for Windows (`C:\Program Files\Git\cmd\git.exe`, `AppData\Local\Programs\Git`, Chocolatey, Scoop). Karena `git clone` kamu berhasil, Git pasti ada; setelah update ini `npm run doctor` akan menampilkan path lengkapnya. Kalau Node dijalankan sebagai service/Apache dengan PATH berbeda, isi:
+  ```bat
+  copy .env.example .env
+  notepad .env
+  ```
+  lalu set `GHC_GIT_BINARY=C:\Program Files\Git\cmd\git.exe` (atau ubah parameter `git.binary` di halaman Parameters).
+- **Root project dihitung saat runtime**, jadi tidak ada lagi `/home/user` yang jadi `C:\home\user`. Yang dipakai otomatis: folder induk checkout (`C:\xampp\htdocs\github-changer`), home (`C:\Users\Administrator`), `C:\xampp\htdocs`, `Documents\GitHub`, `source\repos`, `projects` — hanya yang benar-benar ada. Tambah manual lewat `GHC_WORKSPACE_ROOTS` (dipisah `;` di Windows) atau halaman Parameters.
+- **Autentikasi push/pull di Windows**: shebang `#!/usr/bin/env node` tidak bisa dieksekusi langsung, jadi app membuat `data/git-askpass.cmd` (wrapper ke `node.exe`) dan memakai `http.https://github.com/.extraHeader` lewat environment (token tidak pernah masuk argumen/URL). Butuh **Git ≥ 2.31** untuk `GIT_CONFIG_COUNT` — cek dengan `git --version`. Untuk GitHub Enterprise, ubah parameter `git.authHost` / `GHC_GIT_HOST`; token tidak akan dikirim ke host lain.
+- **OAuth Client ID** tetap wajib: isi di `.env` (`GITHUB_CLIENT_ID=Iv1.…`) atau di layar login / halaman Parameters.
 
 ### Cara setup OAuth GitHub (penting)
 
@@ -214,6 +230,10 @@ npm run doctor   # laporan lingkungan
 | Tombol login nonaktif | Client ID belum diisi (Parameters atau `.env`) |
 | `Client ID tidak dikenal GitHub` | Pastikan OAuth App benar & **Enable Device Flow** dicentang |
 | `Tidak bisa menghubungi GitHub` | Server butuh akses ke `github.com` / `api.github.com` |
+| Windows: `Git tidak ditemukan` | Update ke versi terbaru (deteksi `where.exe`), atau set `GHC_GIT_BINARY` / `git.binary` ke path absolut `git.exe` |
+| Windows: root `C:\home\user` tidak ada | Sudah diperbaiki: root default dihitung runtime. Cek `/api/bootstrap` → `environment.roots` |
+| Windows: buka lewat Apache/XAMPP | App jalan di Node port 4173; buka `http://localhost:4173` atau pasang reverse proxy Apache |
+| Windows: push minta password | Pastikan Git ≥ 2.31 (`GIT_CONFIG_COUNT`) dan `git.authHost` = `github.com` |
 | Repo tidak muncul | Cek `workspace.roots`, `scanDepth`, `workspace.exclude` → tombol **Cek path** |
 | Push gagal `Permission denied` | Token butuh scope `repo`; cek `auth.allowedEmails`; login ulang |
 | `Path di luar root project` | Tambahkan folder induk repo ke `workspace.roots` |

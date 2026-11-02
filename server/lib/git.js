@@ -10,23 +10,103 @@
  */
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
-import { PROJECT_ROOT } from './config.js';
+import { PROJECT_ROOT, DATA_DIR } from './config.js';
 import { HttpError, truncate, uid } from './util.js';
 
 const ASKPASS = path.join(PROJECT_ROOT, 'scripts/git-askpass.js');
+const IS_WIN = process.platform === 'win32';
 const SEP = '\x1f';
 const SAFE_REF = /^[A-Za-z0-9._\-\/:]+$/;
 const SAFE_REMOTE = /^[A-Za-z0-9._\-]+$/;
 const LOG_FORMAT = `%H${SEP}%h${SEP}%an${SEP}%ae${SEP}%aI${SEP}%d${SEP}%s`;
 
-let binaryCache = new Map();
+const COMMON_GIT_PATHS = [
+  'C:\\Program Files\\Git\\cmd\\git.exe',
+  'C:\\Program Files (x86)\\Git\\cmd\\git.exe',
+  'C:\\Program Files\\Git\\bin\\git.exe',
+  path.join(os.homedir(), 'AppData', 'Local', 'Programs', 'Git', 'cmd', 'git.exe'),
+  'C:\\ProgramData\\chocolatey\\bin\\git.exe',
+  path.join(os.homedir(), 'scoop', 'apps', 'git', 'current', 'cmd', 'git.exe'),
+];
 
+let binaryCache = new Map();
+let askpassPath;
+
+/**
+ * Cari executable lintas-platform.
+ * Windows tidak punya `which`, jadi: where.exe -> scan PATH+PATHEXT manual ->
+ * lokasi instalasi umum Git for Windows. Tetap bekerja kalau Node dijalankan
+ * sebagai service dengan PATH yang berbeda dari cmd user.
+ */
+export function findOnPath(name) {
+  const locator = IS_WIN ? 'where.exe' : 'which';
+  try {
+    const probe = spawnSync(locator, [name], { encoding: 'utf8', timeout: 5000, windowsHide: true });
+    if (probe.status === 0) {
+      const first = probe.stdout.split(/\r?\n/).map((s) => s.trim()).find(Boolean);
+      if (first && fs.existsSync(first)) return first;
+    }
+  } catch { /* lanjut ke scan manual */ }
+
+  const extensions = IS_WIN
+    ? (process.env.PATHEXT || '.COM;.EXE;.BAT;.CMD').split(';').map((e) => e.toLowerCase()).filter(Boolean)
+    : [''];
+  const hasExt = Boolean(path.extname(name));
+  for (const dir of (process.env.PATH || '').split(path.delimiter).filter(Boolean)) {
+    for (const ext of extensions) {
+      const stem = ext && !hasExt ? name + ext : name;
+      const candidate = path.join(dir, stem);
+      try {
+        if (fs.statSync(candidate).isFile()) {
+          fs.accessSync(candidate, fs.constants.X_OK);
+          return candidate;
+        }
+      } catch { /* coba kandidat berikutnya */ }
+      // Windows case-insensitive: cari varian huruf walau FS-nya case-sensitive.
+      if (IS_WIN) {
+        try {
+          const match = fs.readdirSync(dir).find((f) => f.toLowerCase() === stem.toLowerCase());
+          if (match) {
+            const variant = path.join(dir, match);
+            fs.accessSync(variant, fs.constants.X_OK);
+            return variant;
+          }
+        } catch { /* direktori tidak bisa dibaca / tidak cocok */ }
+      }
+    }
+  }
+
+  if (IS_WIN && /^git(\.exe)?$/i.test(name)) {
+    for (const candidate of COMMON_GIT_PATHS) {
+      try { fs.accessSync(candidate, fs.constants.X_OK); return candidate; } catch { /* ignore */ }
+    }
+  }
+  return null;
+}
+
+/**
+ * GIT_ASKPASS: script .js bershebang di POSIX; di Windows dibungkus .cmd
+ * karena CreateProcess tidak bisa menjalankan shebang langsung.
+ * File .cmd dibuat di data/ (gitignored) dan path node di-hardcode absolut.
+ */
 export function ensureAskpass() {
-  try { fs.chmodSync(ASKPASS, 0o755); } catch { /* best effort */ }
-  return ASKPASS;
+  if (askpassPath) return askpassPath;
+  try { fs.chmodSync(ASKPASS, 0o755); } catch { /* Windows: mode tidak ada */ }
+  if (IS_WIN) {
+    const cmd = path.join(DATA_DIR, 'git-askpass.cmd');
+    const content = `@echo off\r\n"${process.execPath}" "${ASKPASS}" %*\r\n`;
+    try {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+      fs.writeFileSync(cmd, content);
+      askpassPath = cmd;
+    } catch { askpassPath = ASKPASS; }
+  } else {
+    askpassPath = ASKPASS;
+  }
+  return askpassPath;
 }
 
 export function resolveGitBinary(cfg) {
@@ -35,35 +115,45 @@ export function resolveGitBinary(cfg) {
   if (cached && Date.now() - cached.at < 30000) return cached;
 
   let resolved = requested;
-  if (!path.isAbsolute(requested)) {
-    const probe = spawnSync('which', [requested], { encoding: 'utf8' });
-    if (probe.status === 0) resolved = probe.stdout.trim().split('\n')[0];
-  }
+  if (!path.isAbsolute(requested)) resolved = findOnPath(requested) || requested;
   let ok = false;
   let version = '';
   try {
     fs.accessSync(resolved, fs.constants.X_OK);
-    const probe = spawnSync(resolved, ['--version'], { encoding: 'utf8', timeout: 4000 });
+    const probe = spawnSync(resolved, ['--version'], { encoding: 'utf8', timeout: 6000, windowsHide: true });
     ok = probe.status === 0;
     version = (probe.stdout || '').trim();
   } catch { ok = false; }
-  const value = { path: resolved, requested, version, ok, error: ok ? null : `Git tidak ditemukan / tidak bisa dijalankan: ${requested}` };
+  const hint = IS_WIN
+    ? ' (Windows: pastikan Git for Windows terinstal / ada di PATH, atau isi parameter git.binary dengan path absolut git.exe)'
+    : '';
+  const value = { path: resolved, requested, version, ok, error: ok ? null : `Git tidak ditemukan / tidak bisa dijalankan: ${requested}${hint}` };
   binaryCache.set(requested, { ...value, at: Date.now() });
   return value;
 }
 
-function buildEnv(token) {
+function buildEnv(cfg, token) {
   const env = { ...process.env };
   env.GIT_TERMINAL_PROMPT = '0';
   env.GIT_CONFIG_COUNT = '1';
   env.GIT_CONFIG_KEY_0 = 'credential.helper';
   env.GIT_CONFIG_VALUE_0 = '';
+  const authHost = String(cfg.git.authHost || process.env.GHC_GIT_HOST || 'github.com')
+    .replace(/^https?:\/\//i, '').replace(/\/+$/, '');
   if (token) {
-    env.GIT_ASKPASS = ASKPASS;
+    env.GIT_ASKPASS = ensureAskpass();
     env.GHC_GIT_TOKEN = token;
+    env.GHC_GIT_HOST = authHost;
+    // Jalur autentikasi utama: header HTTP lewat env (bukan argv), URL-scoped
+    // sehingga bekerja di Windows tanpa askpass dan tidak bocor ke host lain.
+    const basic = Buffer.from(`x-access-token:${token}`).toString('base64');
+    env.GIT_CONFIG_COUNT = '2';
+    env.GIT_CONFIG_KEY_1 = `http.https://${authHost}/.extraHeader`;
+    env.GIT_CONFIG_VALUE_1 = `AUTHORIZATION: basic ${basic}`;
   } else {
     delete env.GIT_ASKPASS;
     delete env.GHC_GIT_TOKEN;
+    delete env.GHC_GIT_HOST;
   }
   return env;
 }
@@ -78,7 +168,7 @@ export function runGit(cfg, args, { cwd, token, timeoutMs, onData } = {}) {
   return new Promise((resolve) => {
     let child;
     try {
-      child = spawn(git.path, args, { cwd: cwd || PROJECT_ROOT, env: buildEnv(token), stdio: ['ignore', 'pipe', 'pipe'] });
+      child = spawn(git.path, args, { cwd: cwd || PROJECT_ROOT, env: buildEnv(cfg, token), stdio: ['ignore', 'pipe', 'pipe'] });
     } catch (error) {
       resolve({ code: -1, stdout: '', stderr: error.message, durationMs: 0, command, timedOut: false });
       return;
@@ -174,13 +264,13 @@ export async function discoverCloneTargets(cfg, roots) {
 
 export async function environment(cfg) {
   const git = resolveGitBinary(cfg);
-  ensureAskpass();
+  const askpass = ensureAskpass();
   let gh = { ok: false, version: '' };
   try {
-    const which = spawnSync('which', ['gh'], { encoding: 'utf8' });
-    if (which.status === 0) {
-      const probe = spawnSync('gh', ['--version'], { encoding: 'utf8', timeout: 4000 });
-      gh = { ok: probe.status === 0, version: (probe.stdout || '').trim().split('\n')[0], path: which.stdout.trim() };
+    const ghPath = findOnPath('gh');
+    if (ghPath) {
+      const probe = spawnSync(ghPath, ['--version'], { encoding: 'utf8', timeout: 4000, windowsHide: true });
+      gh = { ok: probe.status === 0, version: (probe.stdout || '').trim().split('\n')[0], path: ghPath };
     }
   } catch { /* gh opsional */ }
   const roots = await Promise.all((cfg.workspace.roots || []).map(async (root) => {
@@ -199,8 +289,9 @@ export async function environment(cfg) {
     platform: `${process.platform} (${process.arch})`,
     home: process.env.HOME || '',
     projectRoot: PROJECT_ROOT,
-    dataDir: path.join(PROJECT_ROOT, 'data'),
-    askpass: ASKPASS,
+    dataDir: DATA_DIR,
+    askpass,
+    isWindows: IS_WIN,
     roots,
     suggested: await suggestedClone(cfg),
     cloneTargets: await discoverCloneTargets(cfg, roots),

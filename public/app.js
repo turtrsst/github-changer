@@ -609,7 +609,8 @@ function dashboardHTML() {
       <div><div class="kv"><span class="k">Git binary</span><span class="v">${esc(env.git.path)}</span>
         <span class="k">Versi</span><span class="v">${esc(env.git.version || '—')}</span>
         <span class="k">GitHub CLI</span><span class="v">${esc(env.gh.ok ? env.gh.version : 'tidak terinstal (opsional)')}</span>
-        <span class="k">Node.js</span><span class="v">${esc(env.node)} · ${esc(env.platform)}</span></div></div>
+        <span class="k">Node.js</span><span class="v">${esc(env.node)}</span>
+        <span class="k">Platform</span><span class="v">${env.isWindows ? 'Windows' : 'POSIX'} · ${esc(env.platform)}</span></div></div>
       <div><div class="tiny muted" style="margin-bottom:8px">Root project yang dipindai</div>
         ${(env.roots || []).map((r) => `<div class="row" style="margin-bottom:6px"><span class="dot ${r.exists && r.writable ? 'good' : 'bad'}"></span><span class="mono tiny truncate" title="${esc(r.path)}">${esc(r.path)}</span><span class="spacer"></span><span class="chip ${r.exists && r.writable ? 'good' : 'bad'}">${r.exists && r.writable ? 'valid' : 'tidak valid'}</span></div>`).join('')}
         <div class="tiny faint" style="margin-top:10px">Data & token: <code>${esc(S.boot.app.dataDir)}</code></div></div>

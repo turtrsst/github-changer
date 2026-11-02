@@ -14,9 +14,13 @@
 
 const prompt = (process.argv[2] || '').toLowerCase();
 const token = process.env.GHC_GIT_TOKEN || '';
+const allowedHost = (process.env.GHC_GIT_HOST || 'github.com').toLowerCase();
 
 if (/user(name)?/.test(prompt)) {
-  process.stdout.write('x-access-token');
+  // Username hanya dikirim untuk host yang diizinkan.
+  process.stdout.write(prompt.includes(allowedHost) ? 'x-access-token' : '');
 } else {
-  process.stdout.write(token);
+  // Jangan pernah kirim token ke host selain GitHub (prompt Git memuat host-nya).
+  // Kalau prompt tidak memuat host sama sekali, tetap diam (fail-closed).
+  process.stdout.write(prompt.includes(allowedHost) ? token : '');
 }

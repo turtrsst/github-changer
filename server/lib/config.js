@@ -20,11 +20,34 @@ export const SCHEMA = readJsonSync(path.join(ROOT, 'config/schema.json'), []);
 export const DATA_DIR = path.resolve(process.env.GHC_DATA_DIR || path.join(ROOT, 'data'));
 export const CONFIG_FILE = path.join(DATA_DIR, 'config.json');
 
-// Default root mengikuti home direktori komputer/server tempat app dipasang.
-const HOME = os.homedir();
-if (HOME && !DEFAULTS.workspace.roots.includes(HOME)) {
-  DEFAULTS.workspace.roots = [HOME, ...DEFAULTS.workspace.roots.filter((p) => p !== HOME)];
+/**
+ * Root project default dihitung saat runtime, mengikuti mesin tempat app
+ * di-clone. Tidak ada hardcode path Linux yang ikut ke Windows
+ * (/home/user -> C:\home\user yang tidak ada).
+ */
+function defaultRoots() {
+  const home = os.homedir();
+  const candidates = [
+    path.dirname(ROOT),                            // folder induk checkout: C:\xampp\htdocs\github-changer
+    home,                                          // C:\Users\Administrator / /home/user
+    path.join(home, 'Documents', 'GitHub'),        // GitHub Desktop
+    path.join(home, 'source', 'repos'),            // Visual Studio
+    path.join(home, 'projects'),
+    process.platform === 'win32' ? 'C:\\xampp\\htdocs' : '/home/user',
+    process.platform === 'win32' ? null : '/workspace',
+  ].filter(Boolean);
+  const out = [];
+  for (const candidate of candidates) {
+    try {
+      if (!fs.statSync(candidate).isDirectory()) continue;
+      const real = fs.realpathSync(candidate);
+      const key = process.platform === 'win32' ? real.toLowerCase() : real;
+      if (!out.some((p) => (process.platform === 'win32' ? p.toLowerCase() : p) === key)) out.push(real);
+    } catch { /* path memang tidak ada di mesin ini, lewati */ }
+  }
+  return out.length ? out : [home];
 }
+DEFAULTS.workspace.roots = defaultRoots();
 
 const ENV_MAP = new Map(SCHEMA.filter((f) => f.env).map((f) => [f.env, f]));
 

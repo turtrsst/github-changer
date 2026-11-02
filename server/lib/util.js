@@ -75,7 +75,13 @@ export async function writeJsonAtomic(file, value) {
   await fsp.mkdir(path.dirname(file), { recursive: true });
   const tmp = `${file}.${process.pid}.tmp`;
   await fsp.writeFile(tmp, JSON.stringify(value, null, 2) + '\n', { mode: 0o600 });
-  await fsp.rename(tmp, file);
+  // Windows kadang menolak rename ke file yang sudah ada; hapus dulu lalu rename.
+  try {
+    await fsp.rename(tmp, file);
+  } catch {
+    await fsp.rm(file, { force: true });
+    await fsp.rename(tmp, file);
+  }
   await fsp.chmod(file, 0o600).catch(() => {});
 }
 

@@ -31,6 +31,7 @@ process.env.PORT = String(PORT);
 
 const { accounts, sessions, publicAccount } = await import('../server/lib/store.js');
 const { ensureDataDir } = await import('../server/lib/config.js');
+const { findOnPath, ensureAskpass } = await import('../server/lib/git.js');
 
 let passed = 0;
 let failed = 0;
@@ -91,6 +92,26 @@ try {
   });
   const token = await sessions.create(account.id, 1);
   check('akun & sesi dibuat', Boolean(account.id && token));
+  check('findOnPath menemukan git lintas-platform', typeof findOnPath('git') === 'string' && fs.existsSync(findOnPath('git')), String(findOnPath('git')));
+  check('askpass disiapkan', typeof ensureAskpass() === 'string' && fs.existsSync(ensureAskpass()));
+
+  // Regresi Windows: process.platform = win32, where.exe tidak ada, hanya git.EXE di PATH.
+  const winScript = `
+    import fs from 'node:fs';
+    import { pathToFileURL } from 'node:url';
+    Object.defineProperty(process, 'platform', { value: 'win32' });
+    process.env.PATHEXT = '.COM;.EXE;.BAT;.CMD';
+    process.env.GHC_DATA_DIR = ${JSON.stringify(path.join(TMP, 'windata'))};
+    const bin = fs.mkdtempSync(${JSON.stringify(path.join(TMP, 'winbin-'))});
+    fs.writeFileSync(bin + '/git.EXE', '', { mode: 0o755 });
+    process.env.PATH = bin;
+    const mod = await import(pathToFileURL(${JSON.stringify(path.join(ROOT, 'server/lib/git.js'))}).href);
+    const found = mod.findOnPath('git');
+    const askpass = mod.ensureAskpass();
+    if (!found || !/git\\.exe$/i.test(found) || !askpass.endsWith('.cmd') || !fs.existsSync(askpass)) process.exit(1);
+  `;
+  const winSim = spawnSync(process.execPath, ['--input-type=module', '-e', winScript], { encoding: 'utf8' });
+  check('simulasi Windows: deteksi git.exe + wrapper askpass .cmd', winSim.status === 0, winSim.stderr);
 
   server = spawn(process.execPath, ['server/index.js'], {
     cwd: ROOT, env: process.env, stdio: ['ignore', 'pipe', 'pipe'],
@@ -102,6 +123,8 @@ try {
   check('bootstrap terotentikasi', boot.data.authenticated === true, JSON.stringify(boot.data.error));
   check('git terdeteksi', boot.data.environment?.git?.ok === true);
   check('root project valid', boot.data.environment?.roots?.[0]?.exists === true);
+  check('tidak ada root path yang tidak ada', boot.data.environment?.roots?.every((r) => r.exists) === true, JSON.stringify(boot.data.environment?.roots));
+  check('info platform & askpass', typeof boot.data.environment?.isWindows === 'boolean' && Boolean(boot.data.environment?.askpass));
   check('saran clone terdeteksi dari origin', typeof boot.data.suggestedClone?.url === 'string' && typeof boot.data.suggestedClone?.name === 'string', JSON.stringify(boot.data.suggestedClone));
   check('folder tujuan clone tersedia', Array.isArray(boot.data.cloneTargets) && boot.data.cloneTargets.length > 0);
   check('konfigurasi OAuth tidak bocor', typeof boot.data.config?.auth?.clientId === 'string');
@@ -111,6 +134,13 @@ try {
 
   const params = await request('/api/parameters', { token });
   check('parameter terekspos', Array.isArray(params.data.fields) && params.data.fields.length > 20, `jumlah ${params.data.fields?.length}`);
+  check('parameter git.authHost ada', params.data.fields?.some((f) => f.path === 'git.authHost') === true);
+
+  const absoluteGit = await request('/api/config', { method: 'PUT', token, body: { values: { 'git.binary': '/usr/bin/git' } } });
+  check('git.binary path absolut bisa disimpan', absoluteGit.status === 200);
+  const envGit = await request('/api/environment', { token });
+  check('git path absolut terdeteksi', envGit.data.environment?.git?.path === '/usr/bin/git' && envGit.data.environment?.git?.ok === true, JSON.stringify(envGit.data.environment?.git));
+  await request('/api/config/reset', { method: 'POST', token, body: { keys: ['git.binary'] } });
 
   const saved = await request('/api/config', { method: 'PUT', token, body: { values: { 'git.defaultBranch': 'main', 'ui.accent': 'mint' } } });
   check('parameter bisa disimpan', saved.data.config?.ui?.accent === 'mint');

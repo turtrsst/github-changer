@@ -4,13 +4,14 @@
     "port": 4173
   },
   "workspace": {
-    "roots": ["/home/user"],
+    "roots": [],
     "scanDepth": 3,
     "maxRepos": 200,
     "exclude": ["node_modules", ".cache", ".npm", ".local", ".venv", "venv", "dist", "build", "target", "out", "__pycache__", ".next", ".nuxt"]
   },
   "git": {
     "binary": "git",
+    "authHost": "github.com",
     "defaultRemote": "origin",
     "defaultBranch": "main",
     "pullStrategy": "ff-only",

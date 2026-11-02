@@ -6,6 +6,7 @@
   { "path": "workspace.maxRepos", "section": "Workspace & Git", "label": "Maks. repository", "type": "number", "min": 1, "max": 2000, "desc": "Batas jumlah repository yang dipindai sekali jalan." },
   { "path": "workspace.exclude", "section": "Workspace & Git", "label": "Folder yang dilewati", "type": "tags", "desc": "Nama folder yang tidak pernah dipindai (dependency cache, build output, dll)." },
   { "path": "git.binary", "section": "Workspace & Git", "label": "Path executable Git", "type": "text", "env": "GHC_GIT_BINARY", "desc": "Path ke Git yang terinstal di server. Isi 'git' untuk auto-detect lewat PATH." },
+  { "path": "git.authHost", "section": "Workspace & Git", "label": "Host autentikasi Git", "type": "text", "env": "GHC_GIT_HOST", "desc": "Host yang boleh menerima token saat push/pull HTTPS. Default github.com; ganti untuk GitHub Enterprise. Token tidak pernah dikirim ke host lain." },
   { "path": "git.defaultRemote", "section": "Workspace & Git", "label": "Remote default", "type": "text", "desc": "Nama remote yang dipakai saat Push / Pull / Fetch." },
   { "path": "git.defaultBranch", "section": "Workspace & Git", "label": "Branch default", "type": "text", "desc": "Branch untuk repo baru (git init) dan fallback saat branch tidak terdeteksi." },
   { "path": "git.pullStrategy", "section": "Workspace & Git", "label": "Strategi Pull", "type": "select", "options": ["ff-only", "rebase", "merge"], "desc": "ff-only paling aman, rebase untuk riwayat linear, merge untuk gabung biasa." },
