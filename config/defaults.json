@@ -1,0 +1,44 @@
+{
+  "server": {
+    "host": "127.0.0.1",
+    "port": 4173
+  },
+  "workspace": {
+    "roots": ["/home/user"],
+    "scanDepth": 3,
+    "maxRepos": 200,
+    "exclude": ["node_modules", ".cache", ".npm", ".local", ".venv", "venv", "dist", "build", "target", "out", "__pycache__", ".next", ".nuxt"]
+  },
+  "git": {
+    "binary": "git",
+    "defaultRemote": "origin",
+    "defaultBranch": "main",
+    "pullStrategy": "ff-only",
+    "autoSetUpstream": true,
+    "authorFromAccount": true,
+    "timeoutMs": 180000
+  },
+  "auth": {
+    "clientId": "",
+    "scopes": "repo read:user user:email workflow",
+    "allowedEmails": [],
+    "allowPat": true,
+    "sessionDays": 7
+  },
+  "arena": {
+    "enabled": true,
+    "sessionLabel": "Arena AI",
+    "branchPrefix": "arena/",
+    "commitTemplate": "chore: sync from {session} - {repo}",
+    "contextNote": "Saya suka banget pakai Arena AI buat ngoding",
+    "showBadge": true
+  },
+  "ui": {
+    "theme": "dark",
+    "accent": "aurora"
+  },
+  "activity": {
+    "retention": 1000,
+    "streamOutput": true
+  }
+}

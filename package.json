@@ -1,0 +1,26 @@
+{
+  "name": "github-changer",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Dashboard lokal untuk maintain akun & repository GitHub: push, pull, clone, commit, dan peta alur Git dengan login OAuth GitHub asli.",
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js",
+    "doctor": "node scripts/doctor.js",
+    "test": "node scripts/smoke-test.js",
+    "check": "node --check server/index.js && node --check server/api.js && node --check server/lib/config.js && node --check server/lib/store.js && node --check server/lib/github.js && node --check server/lib/git.js && node --check server/lib/auth.js && node --check public/app.js"
+  },
+  "keywords": [
+    "github",
+    "git",
+    "oauth",
+    "device-flow",
+    "dashboard",
+    "local-app"
+  ],
+  "license": "MIT"
+}

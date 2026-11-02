@@ -1,0 +1,8 @@
+# Runtime data: token, session, config, dan log aktivitas JANGAN masuk Git
+data/
+.env
+.env.local
+*.log
+node_modules/
+.DS_Store
+coverage/
