@@ -44,6 +44,9 @@ for (const root of env.roots) {
 }
 
 console.log('\n  Saran:');
+if (path.basename(PROJECT_ROOT).toLowerCase() === path.basename(path.dirname(PROJECT_ROOT)).toLowerCase()) {
+  warn('Folder bersarang', `${PROJECT_ROOT} → sebaiknya isinya dipindah ke ${path.dirname(PROJECT_ROOT)} (README → Windows/XAMPP)`);
+}
 if (!cfg.auth.clientId) warn('Login GitHub', 'isi auth.clientId di halaman Parameters atau GITHUB_CLIENT_ID di .env');
 if (!env.git.ok) warn('Git', env.isWindows
   ? 'instal Git for Windows, atau set git.binary = C:\\Program Files\\Git\\cmd\\git.exe (bisa lewat .env: GHC_GIT_BINARY)'

@@ -125,6 +125,7 @@ try {
   check('root project valid', boot.data.environment?.roots?.[0]?.exists === true);
   check('tidak ada root path yang tidak ada', boot.data.environment?.roots?.every((r) => r.exists) === true, JSON.stringify(boot.data.environment?.roots));
   check('info platform & askpass', typeof boot.data.environment?.isWindows === 'boolean' && Boolean(boot.data.environment?.askpass));
+  check('deteksi folder bersarang tersedia', typeof boot.data.app?.nestedCheckout === 'boolean' && typeof boot.data.app?.suggestedParent === 'string');
   check('saran clone terdeteksi dari origin', typeof boot.data.suggestedClone?.url === 'string' && typeof boot.data.suggestedClone?.name === 'string', JSON.stringify(boot.data.suggestedClone));
   check('folder tujuan clone tersedia', Array.isArray(boot.data.cloneTargets) && boot.data.cloneTargets.length > 0);
   check('konfigurasi OAuth tidak bocor', typeof boot.data.config?.auth?.clientId === 'string');

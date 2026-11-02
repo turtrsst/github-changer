@@ -170,6 +170,19 @@ function cloneSuggestedModal() {
   const suggested = S.boot?.suggestedClone || {};
   return { kind: 'clone', url: suggested.url || '', name: suggested.name || '', branch: suggested.branch || '', root: preferredCloneRoot() };
 }
+function nestedBannerHTML() {
+  const info = S.boot?.app;
+  if (!info?.nestedCheckout || LS.get('ghc.nestedHint')) return '';
+  return `<div class="card pad row wrap" style="margin-bottom:18px;border-color:color-mix(in srgb,var(--warn) 45%,var(--border));background:color-mix(in srgb,var(--warn) 8%,transparent)">
+    ${ic('alert')}
+    <div style="min-width:220px"><b class="small">Folder hasil clone masih bersarang</b>
+      <div class="tiny muted">App sekarang di <code>${esc(info.projectRoot)}</code>. Supaya rapi, pindahkan isinya satu level ke atas ke <code>${esc(info.suggestedParent)}</code> — atau clone ulang dari folder induknya. Caranya ada di README → Windows/XAMPP.</div></div>
+    <span class="spacer"></span>
+    <button class="btn sm" data-action="copy" data-copy="${esc(info.suggestedParent)}">${ic('copy')} Salin path</button>
+    <button class="btn sm icon ghost" data-action="nested-dismiss" title="Sembunyikan">${ic('close')}</button>
+  </div>`;
+}
+
 function cloneOnboardingHTML() {
   if (LS.get('ghc.cloneHint')) return '';
   const suggested = S.boot?.suggestedClone || {};
@@ -576,6 +589,7 @@ function dashboardHTML() {
       <button class="btn" data-action="scan-repos">${ic('refresh')} Pindai ulang</button>
       <button class="btn primary" data-action="clone-open">${ic('plus')} Clone repo</button>
     </div></div>
+  ${nestedBannerHTML()}
   ${cloneOnboardingHTML()}
   <div class="grid g4" style="margin-bottom:16px">
     ${statCard('Repository lokal', S.repos === null ? '…' : repos.length, `${dirty} ada perubahan · ${ahead} ahead`, 'repo')}
@@ -1306,6 +1320,7 @@ document.addEventListener('click', async (event) => {
     case 'quick-checkout': await doGit('checkout', { path: S.drawer?.path, target: trigger.dataset.branch }); break;
     case 'clone-suggested': S.modal = cloneSuggestedModal(); renderModal(); break;
     case 'clone-dismiss': LS.set('ghc.cloneHint', '1'); renderView(); break;
+    case 'nested-dismiss': LS.set('ghc.nestedHint', '1'); renderView(); break;
     case 'clone-use-suggested': {
       const suggested = S.boot.suggestedClone || {};
       const urlField = $('[data-field="url"]', $('#modal-root'));

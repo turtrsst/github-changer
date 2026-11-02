@@ -34,14 +34,49 @@ Tidak ada `npm install`, tidak ada build step, tidak ada dependency eksternal. *
 
 Kode ada di branch **`arena/a2271201-github-changer`** — branch `main` masih berisi commit awal (README doang). Jadi clone dengan `-b`:
 
+**Linux / macOS** (clone dari folder induknya):
+
 ```bash
 git clone --branch arena/a2271201-github-changer https://github.com/turtrsst/github-changer.git
 cd github-changer
-npm run doctor          # cek Git, root project, OAuth, dll
-npm start               # http://localhost:4173
+npm run doctor
+npm start
 ```
 
-Kalau terlanjur `git clone` biasa: `git fetch origin && git checkout arena/a2271201-github-changer`.
+**Windows / XAMPP — path yang benar: `C:\xampp\htdocs\github-changer\`**
+
+```bat
+cd /d C:\xampp\htdocs
+git clone --branch arena/a2271201-github-changer https://github.com/turtrsst/github-changer.git github-changer
+cd github-changer
+npm run doctor
+npm start
+```
+
+> ⚠️ **Jangan** `cd C:\xampp\htdocs\github-changer` dulu lalu `git clone …` — itu yang bikin hasilnya bersarang jadi `C:\xampp\htdocs\github-changer\github-changer`. Clone dilakukan **dari folder induk** (`C:\xampp\htdocs`), dengan nama folder tujuan `github-changer`. Kalau folder tujuan sudah ada dan kosong, alternatif: `cd C:\xampp\htdocs\github-changer` lalu `git clone --branch arena/a2271201-github-changer https://github.com/turtrsst/github-changer.git .`
+
+**Kalau terlanjur bersarang** (`…\github-changer\github-changer`), pilih salah satu:
+
+```powershell
+# Opsi A — pindahkan isinya naik satu level (menjaga .env / data yang sudah ada)
+cd C:\xampp\htdocs\github-changer
+Get-ChildItem -Force .\github-changer | Move-Item -Destination . -Force
+Remove-Item .\github-changer -Recurse -Force
+git pull
+npm run doctor
+```
+
+```bat
+:: Opsi B — clone ulang bersih (backup dulu .env / data kalau sudah ada)
+cd /d C:\xampp\htdocs
+rmdir /S /Q github-changer
+git clone --branch arena/a2271201-github-changer https://github.com/turtrsst/github-changer.git github-changer
+cd github-changer
+```
+
+`npm run doctor` dan dashboard sekarang **mendeteksi folder bersarang otomatis** dan kasih peringatan beserta path tujuan yang benar.
+
+Kalau terlanjur `git clone` biasa (tanpa `-b`): `git fetch origin && git checkout arena/a2271201-github-changer`.
 
 Di lingkungan preview, clone lokal juga sudah dibuat di **`/home/user/projects/github-changer`** (origin tetap `https://github.com/turtrsst/github-changer.git`), jadi app langsung menampilkan 2 repo: checkout kerja + hasil clone.
 
@@ -67,7 +102,7 @@ HOST=0.0.0.0 PORT=4173 npm start
 
 ## 3. Catatan Windows / XAMPP
 
-Kasus nyata: clone di `C:\xampp\htdocs\github-changer\github-changer`, Node v26, Windows 10. Beberapa hal yang perlu diperhatikan:
+Target pemasangan: **`C:\xampp\htdocs\github-changer\`** (bukan `…\github-changer\github-changer`), Node v26, Windows 10. Beberapa hal yang perlu diperhatikan:
 
 - **App ini server Node.js sendiri, bukan PHP/Apache.** XAMPP/Apache **tidak** menjalankan kode ini. Jalankan `npm start`, lalu buka **<http://localhost:4173>** — bukan `http://localhost/github-changer/...`. Kalau memang ingin lewat Apache, aktifkan `mod_proxy` dan reverse-proxy ke `http://127.0.0.1:4173`.
 - **Jangan tambahkan `# komentar` setelah perintah di `cmd`** (itu bukan komentar di cmd, diteruskan sebagai argumen). Cukup ketik `npm start`. Di PowerShell `#` baru berfungsi sebagai komentar.
@@ -77,7 +112,11 @@ Kasus nyata: clone di `C:\xampp\htdocs\github-changer\github-changer`, Node v26,
   notepad .env
   ```
   lalu set `GHC_GIT_BINARY=C:\Program Files\Git\cmd\git.exe` (atau ubah parameter `git.binary` di halaman Parameters).
-- **Root project dihitung saat runtime**, jadi tidak ada lagi `/home/user` yang jadi `C:\home\user`. Yang dipakai otomatis: folder induk checkout (`C:\xampp\htdocs\github-changer`), home (`C:\Users\Administrator`), `C:\xampp\htdocs`, `Documents\GitHub`, `source\repos`, `projects` — hanya yang benar-benar ada. Tambah manual lewat `GHC_WORKSPACE_ROOTS` (dipisah `;` di Windows) atau halaman Parameters.
+- **Root project dihitung saat runtime**, jadi tidak ada lagi `/home/user` yang jadi `C:\home\user`. Dengan app di `C:\xampp\htdocs\github-changer`, yang dipakai otomatis: folder induk checkout (`C:\xampp\htdocs`), home (`C:\Users\Administrator`), `Documents\GitHub`, `source\repos`, `projects` — hanya yang benar-benar ada. App akan menemukan repo-nya sendiri di `C:\xampp\htdocs\github-changer`. Mau eksplisit? Set di `.env`:
+  ```bat
+  GHC_WORKSPACE_ROOTS=C:\xampp\htdocs\github-changer;C:\xampp\htdocs
+  ```
+  (beberapa root dipisah `;` di Windows; bisa juga lewat halaman Parameters → `workspace.roots`).
 - **Autentikasi push/pull di Windows**: shebang `#!/usr/bin/env node` tidak bisa dieksekusi langsung, jadi app membuat `data/git-askpass.cmd` (wrapper ke `node.exe`) dan memakai `http.https://github.com/.extraHeader` lewat environment (token tidak pernah masuk argumen/URL). Butuh **Git ≥ 2.31** untuk `GIT_CONFIG_COUNT` — cek dengan `git --version`. Untuk GitHub Enterprise, ubah parameter `git.authHost` / `GHC_GIT_HOST`; token tidak akan dikirim ke host lain.
 - **OAuth Client ID** tetap wajib: isi di `.env` (`GITHUB_CLIENT_ID=Iv1.…`) atau di layar login / halaman Parameters.
 
@@ -233,6 +272,7 @@ npm run doctor   # laporan lingkungan
 | Windows: `Git tidak ditemukan` | Update ke versi terbaru (deteksi `where.exe`), atau set `GHC_GIT_BINARY` / `git.binary` ke path absolut `git.exe` |
 | Windows: root `C:\home\user` tidak ada | Sudah diperbaiki: root default dihitung runtime. Cek `/api/bootstrap` → `environment.roots` |
 | Windows: buka lewat Apache/XAMPP | App jalan di Node port 4173; buka `http://localhost:4173` atau pasang reverse proxy Apache |
+| Windows: hasil clone bersarang `github-changer\github-changer` | `doctor` & dashboard kasih peringatan. Pindahkan isinya ke `C:\xampp\htdocs\github-changer` (PowerShell `Get-ChildItem -Force … \| Move-Item …`) atau clone ulang dari `C:\xampp\htdocs` |
 | Windows: push minta password | Pastikan Git ≥ 2.31 (`GIT_CONFIG_COUNT`) dan `git.authHost` = `github.com` |
 | Repo tidak muncul | Cek `workspace.roots`, `scanDepth`, `workspace.exclude` → tombol **Cek path** |
 | Push gagal `Permission denied` | Token butuh scope `repo`; cek `auth.allowedEmails`; login ulang |

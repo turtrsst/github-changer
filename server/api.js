@@ -67,7 +67,13 @@ export async function handleApi(req, res, url, bus) {
   if (route === '/api/bootstrap' && method === 'GET') {
     const env = await git.environment(cfg);
     return ok(res, {
-      app: { name: 'GitHub Changer', version: VERSION, projectRoot: PROJECT_ROOT, dataDir: DATA_DIR, activityFile: dataPaths.ACTIVITY_FILE, time: new Date().toISOString() },
+      app: {
+        name: 'GitHub Changer', version: VERSION, projectRoot: PROJECT_ROOT,
+        dataDir: DATA_DIR, activityFile: dataPaths.ACTIVITY_FILE, time: new Date().toISOString(),
+        // Deteksi "clone di dalam folder dengan nama sama" (github-changer/github-changer).
+        nestedCheckout: path.basename(PROJECT_ROOT).toLowerCase() === path.basename(path.dirname(PROJECT_ROOT)).toLowerCase(),
+        suggestedParent: path.dirname(PROJECT_ROOT),
+      },
       config: publicConfig(cfg),
       oauthReady: Boolean(cfg.auth.clientId),
       authenticated: ctx.authenticated && ctx.pinOk,
