@@ -119,6 +119,17 @@ export async function runAutomation({ trigger = 'manual', action, repoPaths, bus
         result.repos.push({ path: repoPath, name: path.basename(repoPath), result: 'skipped', reason: 'ada perubahan lokal' });
         continue;
       }
+      // Pengaman: jangan pernah pull branch yang salah (mis. server nggak sengaja
+      // checkout main padahal domain menjalankan branch arena/*).
+      const expectedBranch = String(cfg.automation.branch || '').trim();
+      if (expectedBranch && op !== 'fetch' && info?.branch && info.branch !== expectedBranch) {
+        result.skipped += 1;
+        result.repos.push({
+          path: repoPath, name: path.basename(repoPath), result: 'skipped',
+          reason: `branch ${info.branch} ≠ ${expectedBranch} (automation.branch)`,
+        });
+        continue;
+      }
       const { entry } = await git.runOperation(cfg, { account, token, onOutput: null }, op, { path: repoPath });
       await activity.append({ ...entry, trigger });
       if (entry.success) result.ok += 1; else result.failed += 1;

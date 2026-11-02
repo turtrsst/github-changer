@@ -823,6 +823,7 @@ function renderAutomationBody() {
         <p class="small muted" style="margin-top:0">Server menjalankan <b>${esc(cfg.action || 'pull')}</b> tiap <b>${esc(cfg.intervalMinutes || 15)} menit</b> untuk ${cfg.repos?.length ? `<b>${cfg.repos.length} repo</b> yang dipilih` : '<b>semua repo</b> terdeteksi'}. Semua run tercatat di halaman Alur Git dengan penanda trigger.</p>
         <div class="kv"><span class="k">Akun dipakai</span><span class="v">${esc(cfg.accountId || 'akun pertama yang login')}</span>
           <span class="k">Lewati repo kotor</span><span class="v">${cfg.onlyClean ? 'ya (aman)' : 'tidak'}</span>
+          <span class="k">Branch wajib</span><span class="v">${esc(cfg.branch || 'bebas')}</span>
           <span class="k">Total run tercatat</span><span class="v">${(st.runs || []).length}</span></div>
         <div class="btn-group" style="margin-top:14px">
           <button class="btn sm ${cfg.enabled ? '' : 'primary'}" data-action="automation-toggle" data-enabled="${cfg.enabled ? '0' : '1'}">${cfg.enabled ? 'Nonaktifkan' : 'Aktifkan scheduler'}</button>
@@ -855,7 +856,7 @@ function renderAutomationBody() {
       <div><b class="small">⚙️ CI + sinyal deploy</b><p class="tiny muted">Template <code>.github/workflows/deploy-kra.yml</code> (salin ke repo KRA): cek <code>php -l</code> + <code>node --check</code>, lalu kirim webhook bertanda tangan HMAC ke app ini setelah CI hijau. Cadangan FTP tersedia kalau dapat akun cPanel. Panduan: <code>docs/deploy-kra.md</code>.</p></div>
     </div>
     <div class="divider"></div>
-    <p class="tiny faint" style="margin:0">Batasi automasi hanya ke KRA: <code>automation.repos=C:\\xampp\\htdocs\\kantor-rama-ai</code>, <code>automation.webhookRepository=turtrsst/kantor-rama-ai</code>, <code>automation.webhookBranch=main</code>. Perlu diingat: <code>main</code> (1417 file) belum berisi bundle N100N/CI yang ada di branch <code>arena/*</code> — pastikan branch yang dipull memang yang dipakai domain.</p>
+    <p class="tiny faint" style="margin:0">Nilai untuk KRA (branch terkonfirmasi <code>arena/cbf4b10e-kantor-rama-ai</code>): <code>automation.repos=C:\\xampp\\htdocs\\kantor-rama-ai</code>, <code>automation.branch=arena/cbf4b10e-kantor-rama-ai</code>, <code>automation.webhookRepository=turtrsst/kantor-rama-ai</code>, <code>automation.webhookBranch=arena/cbf4b10e-kantor-rama-ai</code>. Pengaman <code>automation.branch</code> melewati repo yang checkout-nya beda branch, jadi tidak pernah salah tarik <code>main</code>.</p>
   </div>
 
   <div class="card"><div class="card-head">${ic('clock')}<h3>Run terakhir</h3><span class="spacer"></span><small>${runs.length} entri</small></div>

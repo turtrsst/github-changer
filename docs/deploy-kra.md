@@ -13,7 +13,7 @@ Semua template ada di repo `github-changer`; saya **tidak mengubah repo KRA**
 | Repo | `turtrsst/kantor-rama-ai` — **public**, default branch `main`, terakhir push 2026-11-02 |
 | Bahasa / stack | **PHP 8.1+ (disarankan 8.2+), MySQL/MariaDB `kra_db`, Apache atau `php -S :8088`, Electron desktop** |
 | Ukuran | ~46 MB, `main` = 1417 file |
-| Branch | `main`, `arena/23a84f9d-kantor-rama-ai` (2599 file), `arena/cbf4b10e-kantor-rama-ai` (3912 file) |
+| Branch | `main`, `arena/23a84f9d-kantor-rama-ai` (2599 file), **`arena/cbf4b10e-kantor-rama-ai` (3912 file) ← yang dipakai domain** |
 | Domain | `https://kantor-rama-ai.my.id` (PHP) · `https://automation.kantor-rama-ai.my.id` (N100N Node :5679) |
 | Lokasi sumber | `\\100.76.172.67\c$\xampp\htdocs\kantor-rama-ai\` (alamat Tailscale, Windows + XAMPP) |
 | Web app | `Start KRA.bat` → `php -S 100.76.172.67:8088 -t .`, dibuka di `/web/index.html` |
@@ -38,11 +38,25 @@ yang sudah ditulis di docs KRA sendiri. Karena mesin itu Windows + XAMPP dan
 sudah menjalankan GitHub Changer di `C:\xampp\htdocs\github-changer`, app ini
 bisa jadi "eksekutor deploy"-nya.
 
-⚠️ **Perbedaan branch wajib diperhatikan:** `main` belum punya `n100n/`,
-`.github/workflows/ci.yml`, `.htaccess`, dan docs deployment. Kalau domain
-`automation.kantor-rama-ai.my.id` menjalankan kode dari branch `arena/*`,
-maka `automation.action=pull` harus dijalankan di checkout branch itu — bukan
-`main`. Cek dulu dengan `git -C C:\xampp\htdocs\kantor-rama-ai branch --show-current`.
+✅ **Branch sudah dikonfirmasi user: `arena/cbf4b10e-kantor-rama-ai`** (3912 file)
+adalah yang dipakai domain. `main` **tidak di-deploy**. Memang di branch ini
+bundle N100N, `.github/workflows/ci.yml`, `.htaccess`, dan
+`docs/N100N_DEPLOYMENT.md` berada — jadi masuk akal.
+
+Konsekuensinya: pull otomatis **harus** terjadi pada checkout branch tersebut.
+Sekali saja di server (hati-hati kalau ada perubahan lokal, simpan dulu):
+
+```powershell
+git -C C:\xampp\htdocs\kantor-rama-ai status --short
+git -C C:\xampp\htdocs\kantor-rama-ai fetch origin
+git -C C:\xampp\htdocs\kantor-rama-ai checkout arena/cbf4b10e-kantor-rama-ai
+git -C C:\xampp\htdocs\kantor-rama-ai branch --set-upstream-to=origin/arena/cbf4b10e-kantor-rama-ai arena/cbf4b10e-kantor-rama-ai
+git -C C:\xampp\htdocs\kantor-rama-ai branch --show-current   # harus arena/cbf4b10e-kantor-rama-ai
+```
+
+Sebagai pengaman, app punya parameter **`automation.branch`**: kalau checkout di
+server nggak sengaja pindah ke `main`, repo itu **dilewati** dan alasannya dicatat
+(`branch main ≠ arena/cbf4b10e-kantor-rama-ai`), bukan diam-diam narik branch salah.
 
 ## 3. Arsitektur
 
@@ -86,6 +100,7 @@ Pastikan folder KRA ada dan remote-nya benar:
 ```powershell
 git -C C:\xampp\htdocs\kantor-rama-ai remote -v
 git -C C:\xampp\htdocs\kantor-rama-ai branch --show-current
+# HARUS: arena/cbf4b10e-kantor-rama-ai
 ```
 
 Di halaman **Automasi** (atau Parameters) isi:
@@ -95,12 +110,13 @@ Di halaman **Automasi** (atau Parameters) isi:
 | `automation.enabled` | `true` |
 | `automation.intervalMinutes` | `15` (cadangan kalau webhook terlewat) |
 | `automation.action` | `pull` |
+| `automation.branch` | `arena/cbf4b10e-kantor-rama-ai` ← **pengaman wajib** |
 | `automation.repos` | `C:\xampp\htdocs\kantor-rama-ai` |
 | `automation.onlyClean` | `true` (jangan timpa perubahan lokal di server) |
 | `automation.webhookEnabled` | `true` |
 | `automation.webhookSecret` | string acak panjang, **sama** dengan yang di GitHub/Actions |
 | `automation.webhookRepository` | `turtrsst/kantor-rama-ai` |
-| `automation.webhookBranch` | `main` (atau branch arena yang dipakai domain) |
+| `automation.webhookBranch` | `arena/cbf4b10e-kantor-rama-ai` (**bukan** `main`) |
 | `automation.deployCommand` | kosongkan dulu; lihat bagian restart N100N di bawah |
 
 ### B. Cloudflare Tunnel (tanpa akses login Exabytes)
@@ -149,9 +165,11 @@ Salin **`.github/workflows/deploy-kra.yml`** ke repo KRA. Isi di
 | Secret | `KRA_DEPLOY_WEBHOOK_SECRET` | sama dengan `automation.webhookSecret` |
 | Secret (opsional) | `FTP_SERVER`, `FTP_USERNAME`, `FTP_PASSWORD` | kalau dapat akses cPanel |
 
-Workflow: `verify` (`php -l` semua file `api/`+`tools/`, `node --check` di
-`web/ desktop/ tools/`) → `notify` mengirim payload mirip webhook `push` dengan
-signature `X-Hub-Signature-256` HMAC-SHA256 → app lokal melakukan `git pull`.
+Workflow: trigger `push` **hanya** pada `arena/cbf4b10e-kantor-rama-ai` (push ke
+`main` tidak memicu deploy). Job `verify` (`php -l` semua file `api/`+`tools/`,
+`node --check` di `web/ desktop/ tools/`) → `notify` mengirim payload mirip
+webhook `push` dengan signature `X-Hub-Signature-256` HMAC-SHA256 dan `ref`
+`refs/heads/arena/cbf4b10e-kantor-rama-ai` → app lokal melakukan `git pull`.
 Di repo `github-changer` workflow ini **tidak aktif** (guard `KRA_DEPLOY_ENABLED`).
 
 ### E. Restart service N100N
@@ -199,12 +217,14 @@ tidak mengisi `C:\vault\KRA` — tetap perlu setup manual di hosting.
 | Webhook 200 tapi `matched: 0` | Remote URL repo lokal tidak mengandung `turtrsst/kantor-rama-ai`; isi `automation.repos` sebagai fallback |
 | Webhook 200 `skipped` | `automation.webhookRepository` / `webhookBranch` tidak cocok dengan payload |
 | Pull dilewati terus | `automation.onlyClean=true` dan ada perubahan lokal di server → commit/stash dulu |
-| Domain masih versi lama | Cek **branch** checkout di server (`main` vs `arena/*`), dan restart N100N |
+| Run `skipped` dengan alasan `branch main ≠ …` | Checkout di server ke `main`. Kembalikan ke `arena/cbf4b10e-kantor-rama-ai` (perintah di §2) — ini memang fungsi `automation.branch` |
+| Domain masih versi lama | Pastikan checkout `arena/cbf4b10e-kantor-rama-ai`, push juga ke branch itu (bukan `main`), dan restart N100N |
 | `502` dari Tunnel | `Start KRA.bat` (:8088) / GitHub Changer (:4173) / N100N (:5679) tidak jalan |
 
 ---
 
-**Belum saya lakukan (butuh keputusan kamu):** menyalin template ke repo KRA dan
-mengisi secrets/variables, karena repo itu di luar checkout sesi ini. Kasih tahu
-kalau mau saya bantu lewat PR/branch di repo KRA — dan konfirmasi dulu **branch
-mana yang benar-benar dipakai `kantor-rama-ai.my.id`** (`main` atau `arena/*`).
+**Belum saya lakukan:** menyalin template ke repo KRA dan mengisi secrets/variables,
+karena repo itu di luar checkout sesi ini. Branch deploy sudah pasti
+`arena/cbf4b10e-kantor-rama-ai` (dikonfirmasi user). Kalau mau, saya bisa
+siapkan berkas siap-commit / patch untuk ditempel ke repo KRA, atau petunjuk
+membuat PR di sana.

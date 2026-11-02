@@ -147,6 +147,7 @@ try {
   check('parameter terekspos', Array.isArray(params.data.fields) && params.data.fields.length > 20, `jumlah ${params.data.fields?.length}`);
   check('parameter git.authHost ada', params.data.fields?.some((f) => f.path === 'git.authHost') === true);
   check('parameter webhookRepository ada', params.data.fields?.some((f) => f.path === 'automation.webhookRepository') === true);
+  check('parameter branch pengaman ada', params.data.fields?.some((f) => f.path === 'automation.branch') === true);
 
   const absoluteGit = await request('/api/config', { method: 'PUT', token, body: { values: { 'git.binary': '/usr/bin/git' } } });
   check('git.binary path absolut bisa disimpan', absoluteGit.status === 200);
@@ -238,6 +239,17 @@ try {
 
   const manual = await request('/api/automation/run', { method: 'POST', token, body: {} });
   check('run manual memproses repo', manual.data.result?.ok >= 1 && manual.data.result?.trigger === 'manual', JSON.stringify(manual.data.result));
+
+  // Pengaman branch: checkout beda branch harus dilewati, bukan ditarik paksa.
+  await request('/api/config', { method: 'PUT', token, body: { values: {
+    'automation.action': 'pull', 'automation.branch': 'branch-yang-tidak-ada',
+  } } });
+  const guarded = await request('/api/automation/run', { method: 'POST', token, body: {} });
+  check('pengaman automation.branch melewati repo', guarded.data.result?.skipped >= 1
+    && (guarded.data.result?.repos || []).some((r) => /automation\.branch/.test(r.reason || '')), JSON.stringify(guarded.data.result).slice(0, 220));
+  await request('/api/config', { method: 'PUT', token, body: { values: {
+    'automation.action': 'fetch', 'automation.branch': '',
+  } } });
 
   const payload = { ref: 'refs/heads/main', repository: { full_name: 'local/test', clone_url: BARE, html_url: BARE } };
   const raw = JSON.stringify(payload);

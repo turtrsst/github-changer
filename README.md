@@ -192,6 +192,7 @@ Bisa. Ada **dua jalur**, dan keduanya sudah ada di app (halaman **Automasi**):
 | `automation.enabled` | Nyalakan scheduler |
 | `automation.intervalMinutes` | Jeda run (default 15 menit) |
 | `automation.action` | `fetch` / `pull` / `push` (default `pull`, paling aman) |
+| `automation.branch` | Pengaman: repo yang checkout-nya beda branch dilewati. Untuk KRA: `arena/cbf4b10e-kantor-rama-ai` |
 | `automation.repos` | Path repo yang diautomasi, satu per baris. **Kosong = semua**. Isi path repo KRA kalau mau batasi hanya KRA |
 | `automation.onlyClean` | Lewati repo yang punya perubahan lokal (anti konflik) |
 | `automation.accountId` | Akun GitHub yang dipakai (kosong = akun pertama) |
@@ -221,12 +222,16 @@ yang menyajikan domain**. PHP langsung baca file baru; N100N perlu restart.
 | `.github/workflows/deploy-kra.yml` | Template untuk repo KRA: CI `php -l` + `node --check` → POST webhook HMAC setelah CI hijau; cadangan FTP |
 | `config/cloudflared-kra.yml.example` | Tunnel 3 hostname: KRA :8088, N100N :5679, webhook app :4173 |
 
-Nilai konkret: `automation.repos=C:\xampp\htdocs\kantor-rama-ai`,
-`automation.webhookRepository=turtrsst/kantor-rama-ai`, `webhookBranch=main`.
-⚠️ `main` (1417 file) **belum** berisi bundle N100N/CI/`.htaccess` yang ada di
-branch `arena/*` — pastikan branch yang di-pull sesuai yang dipakai domain.
-Workflow di repo ini sengaja tidak aktif (guard `vars.KRA_DEPLOY_ENABLED`).
-Saya **tidak mengubah repo KRA**; template tinggal disalin ke sana.
+**Branch terkonfirmasi: `arena/cbf4b10e-kantor-rama-ai`** (yang dipakai domain;
+`main` tidak di-deploy). Nilai konkret: `automation.repos=C:\xampp\htdocs\kantor-rama-ai`,
+`automation.branch=arena/cbf4b10e-kantor-rama-ai`,
+`automation.webhookRepository=turtrsst/kantor-rama-ai`,
+`automation.webhookBranch=arena/cbf4b10e-kantor-rama-ai`.
+`automation.branch` adalah **pengaman**: repo yang checkout-nya beda branch akan
+dilewati (dan alasannya dicatat), jadi tidak pernah salah tarik `main`.
+Workflow template hanya trigger di branch itu dan tidak aktif di repo ini
+(guard `vars.KRA_DEPLOY_ENABLED`). Saya **tidak mengubah repo KRA**; template
+tinggal disalin ke sana.
 
 ---
 
@@ -386,6 +391,7 @@ npm run doctor   # laporan lingkungan
 | `Could not read package.json` / clone ditolak "not empty" | Folder terhapus sebagian. Pakai blok **Recovery** di section Windows/XAMPP |
 | Automasi tidak jalan | Proses server mati (pakai `scripts\start-hidden.ps1` / autostart), `automation.enabled` masih `false`, atau belum ada akun GitHub login |
 | Webhook `Signature tidak valid` | `automation.webhookSecret` beda dengan secret di GitHub, atau `webhookEnabled` mati. Kirim ulang event `ping` untuk cek |
+| Run automasi `skipped` karena beda branch | Checkout server balik ke `arena/cbf4b10e-kantor-rama-ai`; ini memang fungsi `automation.branch` |
 | Repo tidak muncul | Cek `workspace.roots`, `scanDepth`, `workspace.exclude` → tombol **Cek path** |
 | Push gagal `Permission denied` | Token butuh scope `repo`; cek `auth.allowedEmails`; login ulang |
 | `Path di luar root project` | Tambahkan folder induk repo ke `workspace.roots` |

@@ -28,7 +28,8 @@ line('OAuth Client ID', cfg.auth.clientId ? `${cfg.auth.clientId.slice(0, 10)}鈥
 line('Email diizinkan', cfg.auth.allowedEmails.length ? cfg.auth.allowedEmails.join(', ') : 'semua (multi-akun)');
 line('Akun tersimpan', String(accounts.count()));
 line('Automasi', cfg.automation.enabled ? `AKTIF 路 ${cfg.automation.action} tiap ${cfg.automation.intervalMinutes} menit` : 'nonaktif (default)', true);
-line('Webhook', cfg.automation.webhookEnabled ? `/webhook/github 路 ${cfg.automation.webhookAction} 路 ${cfg.automation.webhookRepository || 'semua repo'} 路 secret ${cfg.automation.webhookSecret ? 'ada' : 'BELUM ADA'}` : 'nonaktif', !cfg.automation.webhookEnabled || Boolean(cfg.automation.webhookSecret));
+line('Webhook', cfg.automation.webhookEnabled ? `/webhook/github 路 ${cfg.automation.webhookAction} 路 ${cfg.automation.webhookRepository || 'semua repo'} 路 ${cfg.automation.webhookBranch || 'semua branch'} 路 secret ${cfg.automation.webhookSecret ? 'ada' : 'BELUM ADA'}` : 'nonaktif', !cfg.automation.webhookEnabled || Boolean(cfg.automation.webhookSecret));
+line('Branch pengaman', cfg.automation.branch || 'tidak dibatasi (bebas)', true);
 line('Token terenkripsi', fs.existsSync(paths.SECRET_FILE) || process.env.APP_SECRET ? 'kunci ada' : 'kunci dibuat saat akun pertama login', true);
 const overridden = parameters().filter((p) => p.source !== 'default');
 line('Parameter diubah', overridden.length ? overridden.map((p) => p.path).join(', ') : 'semua default');

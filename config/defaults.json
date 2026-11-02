@@ -46,6 +46,7 @@
     "enabled": false,
     "intervalMinutes": 15,
     "action": "pull",
+    "branch": "",
     "accountId": "",
     "repos": [],
     "onlyClean": true,

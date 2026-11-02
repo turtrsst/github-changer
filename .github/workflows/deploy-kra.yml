@@ -9,6 +9,8 @@
 #   • Server sumber: \\100.76.172.67\c$\xampp\htdocs\kantor-rama-ai\
 #   • `main` = 1417 file (KRA inti). Branch arena/* = 2599–3912 file, berisi
 #     bundle N100N + CI. Deploy docs (docs/N100N_DEPLOYMENT.md) ada di arena/*.
+#   • BRANCH YANG DIPAKAI DOMAIN (dikonfirmasi user): arena/cbf4b10e-kantor-rama-ai
+#     → deploy HANYA dari branch ini. `main` TIDAK di-deploy.
 #   • api/config.json, .env, .temp/, node_modules/ SUDAH di-.gitignore ✅
 #
 # PRINSIP: "Push source ke GitHub saja belum mengubah proses yang berjalan."
@@ -24,12 +26,18 @@
 #   Secrets  : KRA_DEPLOY_WEBHOOK_URL   = https://ghc.kantor-rama-ai.my.id/webhook/github
 #              KRA_DEPLOY_WEBHOOK_SECRET = sama dengan automation.webhookSecret
 #              FTP_SERVER / FTP_USERNAME / FTP_PASSWORD (opsional, mode ftp)
+#
+# Di sisi app GitHub Changer (mesin KRA), pasangkan dengan:
+#   automation.branch            = arena/cbf4b10e-kantor-rama-ai
+#   automation.webhookBranch     = arena/cbf4b10e-kantor-rama-ai
+#   automation.webhookRepository = turtrsst/kantor-rama-ai
 # ─────────────────────────────────────────────────────────────────────────────
 name: Deploy KRA
 
 on:
+  # HANYA branch yang dipakai domain. Push ke main tetap aman (tidak deploy).
   push:
-    branches: [main, 'arena/**']
+    branches: ['arena/cbf4b10e-kantor-rama-ai']
   workflow_dispatch:
     inputs:
       target:
