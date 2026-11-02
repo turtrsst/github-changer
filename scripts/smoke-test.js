@@ -14,6 +14,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import crypto from 'node:crypto';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const TMP = await fsp.mkdtemp(path.join(os.tmpdir(), 'ghc-test-'));
@@ -51,6 +52,15 @@ async function request(pathname, { method = 'GET', body, token } = {}) {
     method,
     headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  let data = {};
+  try { data = await res.json(); } catch { /* ignore */ }
+  return { status: res.status, data };
+}
+
+async function rawPost(pathname, raw, headers = {}) {
+  const res = await fetch(`${BASE}${pathname}`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: raw,
   });
   let data = {};
   try { data = await res.json(); } catch { /* ignore */ }
@@ -210,6 +220,37 @@ try {
   const ctx = await request('/api/arena/context', { token });
   check('konteks Arena AI ada', (ctx.data.context?.text || '').includes('Branch:'));
   check('konteks memuat akun aktif', (ctx.data.context?.text || '').includes('test@example.com'));
+
+  // ----------------------------- Automasi -----------------------------
+  const autoStatus = await request('/api/automation', { token });
+  check('status automasi tersedia', typeof autoStatus.data.status?.running === 'boolean' && Boolean(autoStatus.data.config), JSON.stringify(autoStatus.data.status));
+
+  const autoCfg = await request('/api/config', { method: 'PUT', token, body: { values: {
+    'automation.action': 'fetch', 'automation.repos': [REPO], 'automation.onlyClean': false,
+    'automation.webhookEnabled': true, 'automation.webhookSecret': 'rahasia-tes',
+    'automation.webhookAction': 'fetch', 'automation.webhookBranch': '',
+  } } });
+  check('parameter automasi bisa disimpan', autoCfg.data.config?.automation?.action === 'fetch');
+
+  const toggleOn = await request('/api/automation/toggle', { method: 'POST', token, body: { enabled: true } });
+  check('scheduler bisa diaktifkan', toggleOn.data.enabled === true);
+
+  const manual = await request('/api/automation/run', { method: 'POST', token, body: {} });
+  check('run manual memproses repo', manual.data.result?.ok >= 1 && manual.data.result?.trigger === 'manual', JSON.stringify(manual.data.result));
+
+  const payload = { ref: 'refs/heads/main', repository: { full_name: 'local/test', clone_url: BARE, html_url: BARE } };
+  const raw = JSON.stringify(payload);
+  const signature = `sha256=${crypto.createHmac('sha256', 'rahasia-tes').update(raw).digest('hex')}`;
+  const ping = await rawPost('/webhook/github', JSON.stringify({ zen: 'Keep it logically awesome.' }), { 'X-GitHub-Event': 'ping' });
+  check('webhook ping dibalas pong', ping.status === 200 && ping.data.message === 'pong');
+  const badSig = await rawPost('/webhook/github', raw, { 'X-GitHub-Event': 'push', 'X-Hub-Signature-256': 'sha256=invalid' });
+  check('webhook signature palsu ditolak', badSig.status === 401, `status ${badSig.status}`);
+  const hook = await rawPost('/webhook/github', raw, { 'X-GitHub-Event': 'push', 'X-Hub-Signature-256': signature });
+  check('webhook push valid menjalankan sync', hook.status === 200 && hook.data.matched >= 1 && hook.data.result?.ok >= 1, JSON.stringify(hook.data).slice(0, 220));
+
+  const afterAuto = await request('/api/activity', { token });
+  check('run automasi tercatat dengan trigger', (afterAuto.data.entries || []).some((e) => e.trigger === 'webhook' || e.trigger === 'manual'));
+  await request('/api/automation/toggle', { method: 'POST', token, body: { enabled: false } });
 
   const html = await fetch(`${BASE}/`);
   check('halaman UI tersedia', html.status === 200 && (await html.text()).includes('GitHub Changer'));

@@ -122,6 +122,18 @@ export async function readBody(req) {
   }
 }
 
+/** Baca body mentah (dipakai verifikasi HMAC webhook GitHub). */
+export async function readRawBody(req, limit = 1024 * 1024) {
+  const chunks = [];
+  let size = 0;
+  for await (const chunk of req) {
+    size += chunk.length;
+    if (size > limit) throw new HttpError(413, 'Payload webhook terlalu besar');
+    chunks.push(chunk);
+  }
+  return Buffer.concat(chunks).toString('utf8');
+}
+
 export function parseCookies(header = '') {
   const out = {};
   for (const part of header.split(';')) {

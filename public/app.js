@@ -88,7 +88,7 @@ const OP = {
 /* ----------------------------- State ----------------------------- */
 const S = {
   boot: null, params: null, repos: null, gh: null, ghRate: null,
-  activity: { entries: [], stats: {} }, context: null, errors: {},
+  activity: { entries: [], stats: {} }, automation: null, context: null, errors: {},
   view: 'dashboard', search: '', repoFilter: 'all', ghSearch: '', ghFilter: 'all',
   actFilter: { op: '', accountId: '', repo: '' },
   drawer: null, drawerTab: 'overview', detail: null, terminal: [],
@@ -272,9 +272,15 @@ async function loadContext() {
   if (S.view === 'dashboard') renderView();
 }
 
+async function loadAutomation() {
+  if (S.demo) return;
+  try { S.automation = await api('/api/automation'); } catch (error) { S.errors.automation = error.message; }
+  if (S.view === 'automation') renderAutomationBody();
+}
+
 async function loadAll(refresh = false) {
   if (S.demo) return;
-  await Promise.allSettled([loadRepos(refresh), loadGithub(), loadActivity(), loadParams(), loadContext()]);
+  await Promise.allSettled([loadRepos(refresh), loadGithub(), loadActivity(), loadParams(), loadContext(), loadAutomation()]);
 }
 
 function connectSSE() {
@@ -293,6 +299,12 @@ function connectSSE() {
       }
     });
     S.es.addEventListener('activity', () => loadActivity());
+    S.es.addEventListener('automation', () => { loadAutomation(); loadActivity(); });
+    S.es.addEventListener('webhook', (event) => {
+      let data = {}; try { data = JSON.parse(event.data); } catch { return; }
+      toast('Webhook masuk', `${data.repository || 'GitHub'} · ${data.ref || 'push'} · ${data.matched || 0} repo cocok`);
+      loadAutomation(); loadActivity();
+    });
   } catch { /* SSE opsional */ }
 }
 
@@ -460,6 +472,7 @@ const NAV = [
   { id: 'repos', label: 'Repository', icon: 'repo' },
   { id: 'github', label: 'GitHub Remote', icon: 'github' },
   { id: 'activity', label: 'Alur Git', icon: 'activity' },
+  { id: 'automation', label: 'Automasi', icon: 'zap' },
   { id: 'params', label: 'Parameters', icon: 'sliders' },
 ];
 const VIEW_LABEL = Object.fromEntries(NAV.map((n) => [n.id, n.label]));
@@ -528,12 +541,13 @@ function renderView() {
   if (!root) return;
   const html = {
     dashboard: dashboardHTML, repos: reposHTML, github: githubHTML,
-    activity: activityHTML, params: paramsHTML,
+    activity: activityHTML, automation: automationHTML, params: paramsHTML,
   }[S.view];
   root.innerHTML = html ? html() : '';
   if (S.view === 'repos') renderRepoList();
   if (S.view === 'github') renderGhList();
   if (S.view === 'activity') renderActivityBody();
+  if (S.view === 'automation') renderAutomationBody();
   if (S.view === 'params') renderParamsBody();
 }
 
@@ -773,6 +787,85 @@ function renderActivityBody() {
       <td><span class="dot ${e.success ? 'good' : 'bad'}"></span> <span class="tiny">${e.success ? 'ok' : 'gagal'}</span></td>
       <td><button class="btn sm icon" data-action="activity-detail" data-id="${esc(e.id)}" title="Detail">${ic('eye')}</button></td>
     </tr>`).join('') : `<tr><td colspan="7"><div class="empty">Belum ada operasi tercatat.</div></td></tr>`}</tbody></table></div></div>`;
+}
+
+/* ----------------------------- Automasi ----------------------------- */
+function automationHTML() {
+  return `<div class="view-head"><div><div class="eyebrow">Scheduler & webhook</div><h1>Automasi</h1>
+    <p>Sync berkala tanpa buka dashboard, dan auto-sync saat ada push ke GitHub — bisa dibatasi hanya untuk proyek tertentu (mis. KRA).</p></div>
+    <div class="spacer"></div><div class="btn-group">
+      <button class="btn" data-action="automation-refresh">${ic('refresh')} Muat ulang</button>
+      <button class="btn primary" data-action="automation-run">${ic('zap')} Jalankan sekarang</button>
+    </div></div>
+  <div id="automation-body"></div>`;
+}
+
+function renderAutomationBody() {
+  const root = $('#automation-body');
+  if (!root) return;
+  const a = S.automation;
+  const cfg = a?.config || S.boot?.config?.automation || {};
+  const st = a?.status || {};
+  const hookUrl = `${location.origin}/webhook/github`;
+  const runs = [...(st.runs || [])].reverse().slice(0, 12);
+
+  root.innerHTML = `<div class="grid g4" style="margin-bottom:16px">
+    ${statCard('Status scheduler', cfg.enabled ? 'AKTIF' : 'nonaktif', st.running ? 'sedang berjalan' : `${cfg.intervalMinutes || 15} menit`, 'zap')}
+    ${statCard('Aksi', String(cfg.action || 'pull').toUpperCase(), cfg.onlyClean ? 'lewati repo kotor' : 'semua repo', 'arrow-down')}
+    ${statCard('Run terakhir', st.lastRunAt ? timeAgo(st.lastRunAt) : 'belum pernah', `${st.lastTrigger || '—'} · ${st.lastResult ? `${st.lastResult.ok || 0} ok / ${st.lastResult.failed || 0} gagal` : ''}`, 'clock')}
+    ${statCard('Run berikutnya', st.nextRunAt ? timeAgo(st.nextRunAt) : '—', cfg.enabled ? 'terjadwal' : 'aktifkan dulu', 'activity')}
+  </div>
+
+  <div class="grid g2" style="margin-bottom:16px">
+    <div class="card"><div class="card-head">${ic('zap')}<h3>Sync terjadwal</h3><span class="spacer"></span>
+      <span class="chip ${cfg.enabled ? 'good' : ''}">${cfg.enabled ? 'aktif' : 'nonaktif'}</span></div>
+      <div class="card-body">
+        <p class="small muted" style="margin-top:0">Server menjalankan <b>${esc(cfg.action || 'pull')}</b> tiap <b>${esc(cfg.intervalMinutes || 15)} menit</b> untuk ${cfg.repos?.length ? `<b>${cfg.repos.length} repo</b> yang dipilih` : '<b>semua repo</b> terdeteksi'}. Semua run tercatat di halaman Alur Git dengan penanda trigger.</p>
+        <div class="kv"><span class="k">Akun dipakai</span><span class="v">${esc(cfg.accountId || 'akun pertama yang login')}</span>
+          <span class="k">Lewati repo kotor</span><span class="v">${cfg.onlyClean ? 'ya (aman)' : 'tidak'}</span>
+          <span class="k">Total run tercatat</span><span class="v">${(st.runs || []).length}</span></div>
+        <div class="btn-group" style="margin-top:14px">
+          <button class="btn sm ${cfg.enabled ? '' : 'primary'}" data-action="automation-toggle" data-enabled="${cfg.enabled ? '0' : '1'}">${cfg.enabled ? 'Nonaktifkan' : 'Aktifkan scheduler'}</button>
+          <button class="btn sm" data-action="nav" data-view="params">${ic('sliders')} Ubah parameter</button>
+        </div>
+        <p class="tiny faint" style="margin:12px 0 0">⚠️ Scheduler hanya jalan kalau <b>proses server tetap hidup</b>. Lihat README → "Haruskah PowerShell nyala terus?" untuk menjalankannya sebagai background / autostart Windows.</p>
+      </div></div>
+
+    <div class="card"><div class="card-head">${ic('github')}<h3>Webhook GitHub</h3><span class="spacer"></span>
+      <span class="chip ${cfg.webhookEnabled ? 'good' : ''}">${cfg.webhookEnabled ? 'aktif' : 'nonaktif'}</span></div>
+      <div class="card-body">
+        <div class="field"><label>URL webhook</label><div class="row"><input class="input mono" readonly value="${esc(hookUrl)}" /><button class="btn sm icon" data-action="copy" data-copy="${esc(hookUrl)}" title="Salin">${ic('copy')}</button></div></div>
+        <div class="field" style="margin-top:10px"><label>Secret</label><div class="row"><input class="input mono" readonly type="password" value="${esc(cfg.webhookSecret || '(belum diatur)')}" /><button class="btn sm icon" data-action="copy" data-copy="${esc(cfg.webhookSecret)}" title="Salin secret">${ic('copy')}</button></div></div>
+        <div class="kv" style="margin-top:12px"><span class="k">Aksi saat push</span><span class="v">${esc(cfg.webhookAction || 'pull')}</span>
+          <span class="k">Branch</span><span class="v">${esc(cfg.webhookBranch || 'semua')}</span>
+          <span class="k">Deploy command</span><span class="v">${esc(cfg.deployCommand || '(tidak ada)')}</span></div>
+        <ol class="steps-list" style="margin-top:14px">
+          <li>Aktifkan <code>automation.webhookEnabled</code> + isi <code>automation.webhookSecret</code> di Parameters.</li>
+          <li>GitHub repo → <b>Settings → Webhooks → Add webhook</b>: URL di atas, Content type <code>application/json</code>, Secret sama persis, event <b>Just the push event</b>.</li>
+          <li>Agar GitHub bisa menjangkau URL ini, app harus punya alamat publik (reverse proxy Apache / port forwarding / tunnel). Kalau tidak mau expose, pakai GitHub Actions saja.</li>
+        </ol>
+      </div></div>
+  </div>
+
+  <div class="card" style="margin-bottom:16px"><div class="card-head">${ic('server')}<h3>Proyek di hosting (mis. KRA di my.id)</h3></div>
+    <div class="card-body grid g3">
+      <div><b class="small">VPS / ada SSH</b><p class="tiny muted">Paling enak: di server hosting jalankan <code>git pull</code> lewat cron, atau webhook ini diarahkan ke domain publik server. App lokal cukup jadi panel kontrol + pencatat alur.</p></div>
+      <div><b class="small">cPanel / shared hosting</b><p class="tiny muted">Pakai <b>Git™ Version Control</b> di cPanel untuk clone repo KRA, lalu aktifkan auto-deploy / cron <code>git pull</code> kalau tersedia. App ini tetap bisa mengatur repo lokalnya.</p></div>
+      <div><b class="small">Cuma FTP (tanpa SSH/Git)</b><p class="tiny muted">Git tidak bisa jalan di hosting. Pakai <b>GitHub Actions → FTP deploy</b>: tiap push, workflow upload file ke my.id. Tidak bergantung pada app/terminal ini nyala.</p></div>
+    </div>
+    <div class="divider"></div>
+    <p class="tiny faint" style="margin:0">Mau saya siapkan workflow GitHub Actions (FTP/SSH) atau konfigurasi cron untuk KRA? Beri tahu tipe hosting + URL repo-nya, nanti saya sesuaikan. Untuk membatasi automasi hanya ke KRA, isi <code>automation.repos</code> dengan path repo KRA (satu per baris).</p>
+  </div>
+
+  <div class="card"><div class="card-head">${ic('clock')}<h3>Run terakhir</h3><span class="spacer"></span><small>${runs.length} entri</small></div>
+    <div class="card-body" style="padding-top:4px">${runs.length ? runs.map((r) => `<div class="flow-item">
+      <div class="flow-icon ${r.failed ? 'bad' : ''}">${ic('zap')}</div>
+      <div class="flow-main"><div class="flow-line"><span class="chip accent">${esc(r.trigger)}</span>
+        <span class="flow-node">${esc(r.action)}</span><span class="arrow">→</span>
+        <span class="flow-node">${r.ok || 0} ok · ${r.failed || 0} gagal · ${r.skipped || 0} dilewati</span></div>
+        <div class="flow-meta"><span>${fmtTime(r.startedAt)}</span><span>${esc(r.account || '')}</span><span>${r.repos?.length || 0} repo</span></div>
+        ${r.error ? `<div class="tiny" style="color:var(--bad)">${esc(r.error)}</div>` : ''}</div>
+      <span class="dot ${r.failed ? 'bad' : 'good'}"></span></div>`).join('') : `<div class="empty tiny">Belum ada run. Klik <b>Jalankan sekarang</b> atau aktifkan scheduler.</div>`}</div></div>`;
 }
 
 /* ----------------------------- Parameters ----------------------------- */
@@ -1206,6 +1299,28 @@ document.addEventListener('click', async (event) => {
       S.view = trigger.dataset.view; S.dropdown = false; render();
       if (!S.demo && !S.repos) loadAll();
       break;
+    case 'automation-refresh': await loadAutomation(); toast('Automasi dimuat ulang'); break;
+    case 'automation-run': {
+      trigger.classList.add('loading');
+      try {
+        const d = await api('/api/automation/run', { method: 'POST', body: {} });
+        const r = d.result || {};
+        toast('Automasi selesai', r.skipped ? r.reason : `${r.ok || 0} berhasil · ${r.failed || 0} gagal · ${r.skipped || 0} dilewati`, r.failed || r.skipped ? 'warn' : 'good');
+        await Promise.allSettled([loadAutomation(), loadActivity(), loadRepos(true)]);
+      } catch (error) { toast('Gagal menjalankan automasi', error.message, 'bad'); }
+      trigger.classList.remove('loading');
+      break;
+    }
+    case 'automation-toggle': {
+      const enable = trigger.dataset.enabled === '1';
+      try {
+        const d = await api('/api/automation/toggle', { method: 'POST', body: { enabled: enable } });
+        if (S.boot.config) S.boot.config.automation = { ...S.boot.config.automation, enabled: d.enabled };
+        await loadAutomation();
+        toast(enable ? 'Scheduler aktif' : 'Scheduler nonaktif', enable ? `Jalan tiap ${S.boot.config.automation.intervalMinutes || 15} menit.` : 'Tidak ada run otomatis.');
+      } catch (error) { toast('Gagal mengubah status', error.message, 'bad'); }
+      break;
+    }
     case 'theme-toggle': {
       S.theme = S.theme === 'light' ? 'dark' : 'light';
       applyTheme();

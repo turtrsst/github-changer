@@ -8,7 +8,8 @@ import { accounts, activity, paths as dataPaths } from './lib/store.js';
 import * as auth from './lib/auth.js';
 import * as github from './lib/github.js';
 import * as git from './lib/git.js';
-import { HttpError, ok, fail, readBody, json } from './lib/util.js';
+import { HttpError, ok, fail, readBody, readRawBody, json } from './lib/util.js';
+import { automationStatus, runAutomation, verifySignature, matchRepos, runDeployCommand } from './lib/automation.js';
 
 const VERSION = '1.0.0';
 const SETUP_KEYS = new Set(['auth.clientId', 'ui.theme', 'ui.accent', 'workspace.roots', 'git.binary']);
@@ -23,6 +24,7 @@ function publicConfig(cfg) {
     arena: cfg.arena,
     ui: cfg.ui,
     activity: cfg.activity,
+    automation: cfg.automation,
   };
 }
 
@@ -256,6 +258,20 @@ export async function handleApi(req, res, url, bus) {
     return ok(res, { cleared: true });
   }
 
+  // ----------------------------- Automasi -----------------------------
+  if (route === '/api/automation' && method === 'GET') {
+    return ok(res, { status: automationStatus(), config: cfg.automation });
+  }
+
+  if (route === '/api/automation/run' && method === 'POST') {
+    return ok(res, { result: await runAutomation({ trigger: 'manual', bus }) });
+  }
+
+  if (route === '/api/automation/toggle' && method === 'POST') {
+    const next = await saveConfig({ 'automation.enabled': Boolean(body.enabled) });
+    return ok(res, { enabled: next.automation.enabled, config: next.automation });
+  }
+
   // ----------------------------- GitHub API -----------------------------
   if (route === '/api/github/repos' && method === 'GET') {
     const token = accounts.token(ctx.account.id);
@@ -326,6 +342,49 @@ export async function handleApi(req, res, url, bus) {
   }
 
   throw new HttpError(404, `Endpoint tidak ditemukan: ${method} ${route}`);
+}
+
+/**
+ * Endpoint publik /webhook/github (di luar /api sengaja, agar bisa dipakai
+ * GitHub / reverse proxy). Diamankan HMAC-SHA256, bukan sesi browser.
+ */
+export async function handleWebhook(req, res, bus) {
+  if (req.method !== 'POST') return json(res, 405, { ok: false, error: 'Gunakan POST' });
+  const cfg = loadConfig();
+  if (!cfg.automation.webhookEnabled) {
+    return json(res, 403, { ok: false, error: 'Webhook dinonaktifkan. Aktifkan parameter automation.webhookEnabled.' });
+  }
+  const raw = await readRawBody(req);
+  let payload = {};
+  try { payload = JSON.parse(raw); } catch { return json(res, 400, { ok: false, error: 'Body bukan JSON' }); }
+  const event = req.headers['x-github-event'] || '';
+  if (event === 'ping') return json(res, 200, { ok: true, message: 'pong', zen: payload.zen || '' });
+
+  const secret = cfg.automation.webhookSecret;
+  if (!verifySignature(secret, raw, req.headers['x-hub-signature-256'])) {
+    return json(res, 401, { ok: false, error: 'Signature tidak valid. Pastikan automation.webhookSecret sama dengan secret di GitHub.' });
+  }
+  if (event !== 'push') return json(res, 200, { ok: true, skipped: true, reason: `event '${event}' diabaikan` });
+
+  const ref = String(payload.ref || '');
+  const wantedBranch = String(cfg.automation.webhookBranch || '').trim();
+  if (wantedBranch && ref !== `refs/heads/${wantedBranch}` && ref !== wantedBranch) {
+    return json(res, 200, { ok: true, skipped: true, reason: `branch ${ref} diabaikan (hanya ${wantedBranch})` });
+  }
+
+  const repoPaths = await matchRepos(cfg, payload);
+  const fullName = payload.repository?.full_name || '';
+  bus.emit('webhook', { event, ref, repository: fullName, matched: repoPaths.length });
+  if (!repoPaths.length) {
+    return json(res, 200, { ok: true, skipped: true, reason: `Tidak ada repo lokal yang cocok dengan ${fullName}`, matched: 0 });
+  }
+
+  const result = await runAutomation({ trigger: 'webhook', action: cfg.automation.webhookAction, repoPaths, bus });
+  const deploy = [];
+  if (cfg.automation.deployCommand && result.ok) {
+    for (const p of repoPaths.slice(0, 10)) deploy.push({ path: p, ...(await runDeployCommand(cfg, p)) });
+  }
+  return json(res, 200, { ok: true, event, ref, repository: fullName, matched: repoPaths.length, result, deploy });
 }
 
 export function apiFail(res, error) { return fail(res, error); }

@@ -27,6 +27,8 @@ line('Server', `http://${cfg.server.host}:${cfg.server.port}`);
 line('OAuth Client ID', cfg.auth.clientId ? `${cfg.auth.clientId.slice(0, 10)}…` : 'BELUM DIATUR', Boolean(cfg.auth.clientId));
 line('Email diizinkan', cfg.auth.allowedEmails.length ? cfg.auth.allowedEmails.join(', ') : 'semua (multi-akun)');
 line('Akun tersimpan', String(accounts.count()));
+line('Automasi', cfg.automation.enabled ? `AKTIF · ${cfg.automation.action} tiap ${cfg.automation.intervalMinutes} menit` : 'nonaktif (default)', true);
+line('Webhook', cfg.automation.webhookEnabled ? `/webhook/github · ${cfg.automation.webhookAction} · secret ${cfg.automation.webhookSecret ? 'ada' : 'BELUM ADA'}` : 'nonaktif', !cfg.automation.webhookEnabled || Boolean(cfg.automation.webhookSecret));
 line('Token terenkripsi', fs.existsSync(paths.SECRET_FILE) || process.env.APP_SECRET ? 'kunci ada' : 'kunci dibuat saat akun pertama login', true);
 const overridden = parameters().filter((p) => p.source !== 'default');
 line('Parameter diubah', overridden.length ? overridden.map((p) => p.path).join(', ') : 'semua default');

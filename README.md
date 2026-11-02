@@ -165,6 +165,58 @@ Scope yang diminta: `repo read:user user:email workflow`. Token dipakai untuk Gi
 
 ---
 
+## 4. Haruskah PowerShell nyala terus?
+
+**Yang harus hidup itu proses `node server/index.js`, bukan jendela terminalnya.** Kalau kamu menutup jendela `npm start`, server ikut mati (dan besoknya `EADDRINUSE` hilang, tapi dashboard juga tidak bisa dibuka). Pilih salah satu:
+
+| Cara | Perintah | Catatan |
+| --- | --- | --- |
+| Terminal dibuka (paling sederhana) | `npm start` | Jendela harus tetap terbuka. `Ctrl+C` untuk berhenti |
+| **Background (direkomendasikan)** | `powershell -ExecutionPolicy Bypass -File scripts\start-hidden.ps1` | Node jalan tersembunyi, log di `data\server.log`, PID di `data\server.pid`. Jendela boleh ditutup |
+| Hentikan background | `powershell -ExecutionPolicy Bypass -File scripts\stop.ps1` | Menghentikan PID + siapa pun yang memegang port 4173 |
+| **Otomatis tiap login Windows** | `powershell -ExecutionPolicy Bypass -File scripts\install-autostart.ps1` | Task Scheduler `GitHub Changer`, auto-restart 3×. Mungkin perlu PowerShell sebagai Administrator |
+| Cek / hapus autostart | `Get-ScheduledTask -TaskName 'GitHub Changer'` / `Unregister-ScheduledTask -TaskName 'GitHub Changer' -Confirm:$false` | |
+| Alternatif lain | `nssm install GitHubChanger "C:\Program Files\nodejs\node.exe" server/index.js` atau `pm2 start server/index.js --name ghc` | Kalau sudah biasa pakai Windows Service / pm2 |
+
+> Catatan: XAMPP/Apache **tidak** menjalankan app ini. Mau diakses lewat Apache? Aktifkan `mod_proxy` dan reverse-proxy ke `http://127.0.0.1:4173`. Kalau server mati, **scheduler & webhook automasi juga berhenti** — jadi pakai background/autostart kalau mau automasi jalan terus.
+
+## 5. Automasi (termasuk proyek di hosting my.id)
+
+Bisa. Ada **dua jalur**, dan keduanya sudah ada di app (halaman **Automasi**):
+
+**A. Scheduler terjadwal** — parameter `automation.*`:
+
+| Parameter | Fungsi |
+| --- | --- |
+| `automation.enabled` | Nyalakan scheduler |
+| `automation.intervalMinutes` | Jeda run (default 15 menit) |
+| `automation.action` | `fetch` / `pull` / `push` (default `pull`, paling aman) |
+| `automation.repos` | Path repo yang diautomasi, satu per baris. **Kosong = semua**. Isi path repo KRA kalau mau batasi hanya KRA |
+| `automation.onlyClean` | Lewati repo yang punya perubahan lokal (anti konflik) |
+| `automation.accountId` | Akun GitHub yang dipakai (kosong = akun pertama) |
+
+Tiap run tercatat di **Alur Git** dengan penanda `trigger: schedule|manual|webhook`, lengkap dengan `from → to`. Tombol **Jalankan sekarang** ada di halaman Automasi.
+
+**B. Webhook GitHub** — `automation.webhookEnabled` + `automation.webhookSecret`:
+
+1. Isi secret (sama persis) di parameter dan di GitHub → **Settings → Webhooks → Add webhook**.
+2. URL: `http://<alamat-publik-app>/webhook/github`, Content type `application/json`, event **Just the push event**.
+3. Signature diverifikasi **HMAC-SHA256** (`X-Hub-Signature-256`); event `ping` dibalas `pong`; branch bisa dibatasi lewat `automation.webhookBranch`.
+4. Repo lokal yang cocok (dicocokkan dari URL remote / `full_name`) langsung di-`pull`, lalu opsional `automation.deployCommand` (mis. `npm run build`) dijalankan **tanpa shell** (tidak ada `&&`, `|`, `;`).
+5. ⚠️ GitHub harus bisa menjangkau URL itu. `http://127.0.0.1:4173` **tidak bisa** dipanggil dari internet → butuh reverse proxy Apache/domain, port forwarding, atau tunnel (Cloudflare Tunnel / ngrok).
+
+**Untuk proyek KRA di hosting `my.id`**, pilih sesuai jenis hosting:
+
+| Hosting | Rekomendasi |
+| --- | --- |
+| **VPS / ada SSH** | Di server hosting: `git clone` repo KRA + cron `git pull` (atau webhook diarahkan ke domain server). App lokal jadi panel kontrol + audit |
+| **cPanel / shared hosting** | Pakai **Git™ Version Control** cPanel untuk clone, aktifkan fitur deploy otomatis / cron `git pull` kalau disediakan |
+| **Cuma FTP (tanpa Git/SSH)** | Git tidak bisa jalan di hosting → pakai **GitHub Actions → FTP deploy**: tiap push, workflow upload file ke `my.id`. Ini **tidak bergantung** pada app/terminal lokal nyala |
+
+> Belum saya buatkan workflow Actions-nya karena perlu detail: hosting KRA pakai cPanel/FTP atau VPS+SSH, dan nama/URL repo GitHub-nya. Kasih info itu, nanti saya siapkan `.github/workflows/deploy-kra.yml` + sesuaikan `automation.repos` ke path KRA.
+
+---
+
 ## Fitur
 
 ### 🏠 Dashboard
@@ -187,6 +239,9 @@ Daftar repo milik akun aktif via GitHub API (public/private/arsip, bahasa, defau
 
 ### 🔀 Alur Git (audit trail)
 Riwayat semua operasi dengan filter aksi / akun / repo. Kolom **Dari**, **Ke**, **Akun**, **Status**, durasi; detail per entri berisi perintah Git + output mentah. Ringkasan bisa disalin. Semua tersimpan di `data/activity.jsonl`.
+
+### ⚡ Automasi
+Scheduler `fetch`/`pull`/`push` berkala per repo (bisa dibatasi hanya proyek tertentu), tombol **Jalankan sekarang**, webhook GitHub dengan verifikasi HMAC-SHA256 + branch filter + perintah deploy tanpa shell, dan riwayat run. Semua run masuk audit Alur Git.
 
 ### ⚙️ Parameters
 28 parameter dikelompokkan: **Server**, **Workspace & Git**, **Otentikasi GitHub**, **Arena AI**, **Tampilan**, **Aktivitas**. Tiap parameter punya deskripsi, tipe input yang sesuai, badge sumber nilai, dan tombol reset. Prioritas nilai:
@@ -233,6 +288,7 @@ Environment: `HOST`, `PORT`, `GITHUB_CLIENT_ID`, `APP_SECRET`, `APP_PIN`, `GHC_G
 - Semua perintah Git lewat `spawn(argv)` **tanpa shell**; token lewat environment `GHC_GIT_TOKEN` yang dibaca `scripts/git-askpass.js`, tidak pernah muncul di `git remote -v`, argumen, atau log.
 - `data/` sudah ada di `.gitignore`: **tidak ada token/config/log yang masuk Git**.
 - Opsional `APP_PIN` untuk PIN tambahan, dan `server.host=127.0.0.1` untuk akses lokal saja. Kalau bind `0.0.0.0`, pakai `APP_PIN` / firewall / reverse proxy.
+- Webhook `/webhook/github` **tidak memakai sesi browser** tapi wajib `automation.webhookSecret` + signature HMAC-SHA256; tanpa secret semua request ditolak. `automation.deployCommand` dieksekusi tanpa shell (tokenisasi spasi, tidak ada `&&`/`|`/`;`) dan default kosong — aktifkan hanya kalau kamu paham perintahnya.
 
 ---
 
@@ -247,7 +303,9 @@ server/
   lib/auth.js         sesi + state machine Device Flow
   lib/github.js       OAuth Device Flow + GitHub REST API
   lib/git.js          eksekutor Git aman + metadata from/to
+  lib/automation.js   scheduler, webhook HMAC, deploy command
   lib/util.js         helper
+scripts/start-hidden.ps1, stop.ps1, install-autostart.ps1  # background/autostart Windows
 public/               index.html, styles.css, app.js (vanilla, tanpa build)
 scripts/
   git-askpass.js      kredensial untuk push/pull HTTPS
@@ -279,7 +337,9 @@ Semua endpoint di bawah `/api`, respons `{ ok: true, ... }`; error `{ ok: false,
 | GET/POST | `/api/github/repos` | Daftar & buat repo GitHub |
 | PATCH | `/api/github/repos/:owner/:repo` | Arsipkan / ubah repo |
 | GET | `/api/arena/context` | Konteks siap salin untuk Arena AI |
-| GET | `/api/events` | SSE: output Git live + event aktivitas |
+| GET/POST | `/api/automation`, `/api/automation/run`, `/api/automation/toggle` | Status scheduler, jalankan manual, aktif/nonaktif |
+| POST | `/webhook/github` | Webhook GitHub (HMAC-SHA256, event `push` / `ping`) |
+| GET | `/api/events` | SSE: output Git live + event aktivitas / automasi / webhook |
 
 Aksi `/api/git`: `status`, `fetch`, `pull`, `push`, `commit`, `checkout`, `branch`, `remote`, `clone`, `init`.
 
@@ -308,6 +368,8 @@ npm run doctor   # laporan lingkungan
 | `EADDRINUSE 127.0.0.1:4173` | Masih ada `npm start` lama. `Ctrl+C` di terminalnya, atau `Get-NetTCPConnection -LocalPort 4173 \| ForEach-Object { Stop-Process -Id $_.OwningProcess -Force }`, atau `set PORT=4174 && npm start` |
 | `used by another process` saat `Remove-Item` / `rmdir` | Proses node lama mengunci CWD-nya. Matikan dulu (lihat baris atas), **baru** hapus folder. Jangan paksa `rmdir /S /Q` sebelum itu |
 | `Could not read package.json` / clone ditolak "not empty" | Folder terhapus sebagian. Pakai blok **Recovery** di section Windows/XAMPP |
+| Automasi tidak jalan | Proses server mati (pakai `scripts\start-hidden.ps1` / autostart), `automation.enabled` masih `false`, atau belum ada akun GitHub login |
+| Webhook `Signature tidak valid` | `automation.webhookSecret` beda dengan secret di GitHub, atau `webhookEnabled` mati. Kirim ulang event `ping` untuk cek |
 | Repo tidak muncul | Cek `workspace.roots`, `scanDepth`, `workspace.exclude` → tombol **Cek path** |
 | Push gagal `Permission denied` | Token butuh scope `repo`; cek `auth.allowedEmails`; login ulang |
 | `Path di luar root project` | Tambahkan folder induk repo ke `workspace.roots` |

@@ -10,7 +10,8 @@ import { PROJECT_ROOT, DATA_DIR, loadConfig, ensureDataDir } from './lib/config.
 import { sessions, accounts } from './lib/store.js';
 import * as git from './lib/git.js';
 import { EventBus } from './lib/util.js';
-import { handleApi, apiFail } from './api.js';
+import { handleApi, handleWebhook, apiFail } from './api.js';
+import { startScheduler, stopScheduler } from './lib/automation.js';
 
 const PUBLIC_DIR = path.join(PROJECT_ROOT, 'public');
 const MIME = {
@@ -81,6 +82,13 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
 
+  // Webhook publik dari GitHub (verifikasi HMAC, bukan sesi browser).
+  if (url.pathname === '/webhook/github') {
+    try { await handleWebhook(req, res, bus); }
+    catch (error) { if (!res.headersSent) apiFail(res, error); else { try { res.end(); } catch { /* ignore */ } } }
+    return;
+  }
+
   if (url.pathname.startsWith('/api/')) {
     try {
       const outcome = await handleApi(req, res, url, bus);
@@ -121,6 +129,8 @@ async function main() {
     process.exit(1);
   });
 
+  startScheduler(bus);
+
   server.listen(port, host, () => {
     const shownHost = host === '0.0.0.0' ? 'localhost' : host;
     console.log('');
@@ -141,6 +151,7 @@ async function main() {
 for (const signal of ['SIGINT', 'SIGTERM']) {
   process.on(signal, () => {
     console.log(`\n[${signal}] Menutup server…`);
+    stopScheduler();
     server.close(() => process.exit(0));
     setTimeout(() => process.exit(0), 2000).unref();
   });

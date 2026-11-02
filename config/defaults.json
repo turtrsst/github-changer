@@ -41,5 +41,18 @@
   "activity": {
     "retention": 1000,
     "streamOutput": true
+  },
+  "automation": {
+    "enabled": false,
+    "intervalMinutes": 15,
+    "action": "pull",
+    "accountId": "",
+    "repos": [],
+    "onlyClean": true,
+    "webhookEnabled": false,
+    "webhookSecret": "",
+    "webhookAction": "pull",
+    "webhookBranch": "",
+    "deployCommand": ""
   }
 }
