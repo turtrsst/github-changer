@@ -576,10 +576,22 @@ export async function runOperation(cfg, { account, token, onOutput }, action, pa
         case 'push': {
           const setUpstream = cfg.git.autoSetUpstream && !info.upstream && params.setUpstream !== false;
           const refspec = targetBranch === branch ? branch : `${branch}:${targetBranch}`;
+          // Hitung commit yang benar-benar belum ada di remote SEBELUM push.
+          // Kalau 0, push tidak akan mengirim apa pun meskipun exit code 0.
+          const aheadRes = await run(['rev-list', '--count', `${remoteName}/${targetBranch}..HEAD`], { cwd });
+          const aheadCount = aheadRes.code === 0 ? Number(aheadRes.stdout.trim()) : NaN;
           res = await run(['push', ...(setUpstream ? ['-u'] : []), ...forceArgs, remoteName, refspec], { cwd });
           entry.from = { label: `Lokal · ${branch} @ ${info.head}`, path: cwd, branch, sha: info.head };
           entry.to = { label: `${remoteName}/${targetBranch} · ${remote.pushUrl}`, url: remote.pushUrl, branch: targetBranch, remote: remoteName, webUrl: branchesUrl(remote.pushUrl) };
-          entry.meta = { setUpstream, force: Boolean(params.force), refspec };
+          // ahead = 0 berarti tidak ada commit lokal yang belum ada di upstream.
+          // Teks "Everything up-to-date" tidak selalu muncul (mis. remote file://),
+          // jadi jangan bergantung pada output saja.
+          const nothingToPush = aheadCount === 0
+            || /everything up-to-date|up-to-date/i.test(String(outputOf(res) || ''));
+          entry.meta = { setUpstream, force: Boolean(params.force), refspec, noChanges: nothingToPush };
+          if (nothingToPush) {
+            entry.summary = 'Tidak ada commit baru untuk dikirim — remote sudah up-to-date. Commit dulu perubahan lokalnya.';
+          }
           break;
         }
         case 'commit': {
@@ -637,6 +649,13 @@ export async function runOperation(cfg, { account, token, onOutput }, action, pa
         result = { ok: res.code === 0, code: res.code, output: outputOf(res) };
       }
       if (!entry.summary) entry.summary = describe(action, entry, result.code);
+
+      // Git keluar 0 dengan "Everything up-to-date" kalau tidak ada commit baru.
+      // Tanpa penanda ini pengguna mengira push berhasil mengirim perubahan.
+      if (action !== 'push' && /everything up-to-date|up-to-date|tidak ada perubahan/i.test(String(result.output || ''))) {
+        entry.meta = { ...(entry.meta || {}), noChanges: true };
+        if (action === 'pull') entry.summary = 'Sudah up-to-date, tidak ada commit baru yang ditarik.';
+      }
     }
 
     entry.success = Boolean(result.ok);

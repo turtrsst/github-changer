@@ -194,7 +194,9 @@ try {
   check('commit memakai email GitHub aktif', author === 'test@example.com', author);
 
   const push2 = await request('/api/git', { method: 'POST', token, body: { action: 'push', params: { path: REPO } } });
-  check('push kedua berhasil', push2.data.result?.ok === true, push2.data.result?.output);
+  check('push kedua berhasil (commit baru terkirim)', push2.data.result?.ok === true && push2.data.entry?.meta?.noChanges === false, push2.data.result?.output);
+  const push3 = await request('/api/git', { method: 'POST', token, body: { action: 'push', params: { path: REPO } } });
+  check('push tanpa commit baru ditandai noChanges', push3.data.entry?.meta?.noChanges === true && /Tidak ada commit baru/.test(push3.data.entry?.summary || ''), JSON.stringify({ meta: push3.data.entry?.meta, summary: push3.data.entry?.summary }));
 
   // Pull dari remote
   const pull = await request('/api/git', { method: 'POST', token, body: { action: 'pull', params: { path: REPO } } });
@@ -279,8 +281,10 @@ try {
   check('CSS tersedia', css.status === 200);
   const cssText = await css.text();
   check('CSS punya ukuran global untuk svg (anti ikon raksasa)', /\bsvg\s*\{[^}]*width:\s*\d+px[^}]*height:\s*\d+px[^}]*flex:\s*none/s.test(cssText));
+  check('modal di atas overlay (detail bisa dibuka)', /\.modal\s*\{[^}]*z-index:\s*51/.test(cssText) && /\.overlay\s*\{[^}]*z-index:\s*50/.test(cssText));
   const appJs = await (await fetch(`${BASE}/app.js`)).text();
   check('setiap ikon inline punya width/height intrinsik', /viewBox="0 0 24 24" width="18" height="18"/.test(appJs));
+  check('tombol detail punya handler', /activity-detail/.test(appJs) && /data-action="activity-detail"/.test(appJs));
   const etag = css.headers.get('etag');
   const revalidated = await fetch(`${BASE}/styles.css`, { headers: { 'If-None-Match': etag || '' } });
   check('aset UI revalidasi (no-cache + 304)', /no-cache/.test(css.headers.get('cache-control') || '') && revalidated.status === 304, `etag ${etag} · status ${revalidated.status}`);

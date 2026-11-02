@@ -76,6 +76,15 @@ function timeAgo(iso) {
 }
 const fmtTime = (iso) => iso ? new Date(iso).toLocaleString('id-ID', { dateStyle: 'short', timeStyle: 'short' }) : '—';
 const shortUrl = (url) => String(url || '').replace(/^https?:\/\//, '').replace(/\.git$/, '').replace(/^git@github\.com:/, 'github.com/');
+// Token OAuth app disuntikkan lewat HTTPS (extraHeader + askpass). Remote SSH
+// tidak memakainya, jadi tawarkan konversi ke HTTPS kalau push gagal publickey.
+const httpsRemote = (url) => {
+  const s = String(url || '');
+  const scp = s.match(/^git@([^:]+):(.+)$/);
+  if (scp) return `https://${scp[1]}/${scp[2]}`;
+  const ssh = s.match(/^ssh:\/\/git@([^/]+)\/(.+)$/);
+  return ssh ? `https://${ssh[1]}/${ssh[2]}` : '';
+};
 
 const OP = {
   push: { label: 'Push', icon: 'arrow-up' }, pull: { label: 'Pull', icon: 'arrow-down' },
@@ -1027,6 +1036,9 @@ function drawerBodyHTML() {
   }
   const remotes = d.remotes?.length ? d.remotes : [{ name: 'origin', pushUrl: '', fetchUrl: '' }];
   const remoteOpts = remotes.map((r) => `<option value="${esc(r.name)}">${esc(r.name)} · ${esc(shortUrl(r.pushUrl)) || 'tanpa URL'}</option>`).join('');
+  const sshUrl = remotes[0].pushUrl || '';
+  const httpsUrl = httpsRemote(sshUrl);
+  const sshWarning = httpsUrl ? `<div class="card pad row" style="margin-bottom:12px;padding:10px 12px;border-color:color-mix(in srgb,var(--warn) 45%,var(--border))">${ic('alert')}<span class="tiny">Remote ini pakai <b>SSH</b>. Token login GitHub Changer hanya dipakai untuk <b>HTTPS</b>. Kalau push gagal <i>Permission denied (publickey)</i>, ganti remote: <code class="mono">git remote set-url ${esc(remotes[0].name)} ${esc(httpsUrl)}</code></span><button class="btn sm icon" data-action="copy" data-copy="git remote set-url ${esc(remotes[0].name)} ${esc(httpsUrl)}" title="Salin perintah">${ic('copy')}</button></div>` : '';
   return `<div class="grid g2" style="margin-bottom:18px">
     <div class="card pad" style="padding:14px"><div class="tiny muted">Branch saat ini</div><div class="mono" style="font-size:15px;margin-top:4px">${esc(d.branch)}</div>
       <div class="tiny faint" style="margin-top:4px">upstream ${esc(d.upstream || 'belum ada')} · HEAD ${esc(d.head || '—')}</div></div>
@@ -1036,6 +1048,8 @@ function drawerBodyHTML() {
       <div class="tiny faint" style="margin-top:6px">${esc(d.gitUser || 'user.name/email dari git config')}</div></div></div>
   <div class="section-title">Push · ke mana?</div>
   <div class="card pad" style="margin-bottom:14px">
+    ${sshWarning}
+    ${d.dirty.total > 0 ? `<div class="card pad row" style="margin-bottom:12px;padding:10px 12px;border-color:color-mix(in srgb,var(--warn) 45%,var(--border));background:color-mix(in srgb,var(--warn) 8%,transparent)">${ic('alert')}<span class="tiny">⚠️ <b>${d.dirty.total} perubahan belum di-commit.</b> Push hanya mengirim <b>commit</b>, bukan file yang masih di working tree — pakai panel <b>Commit</b> di bawah dulu.</span></div>` : (d.ahead === 0 ? `<div class="card pad row" style="margin-bottom:12px;padding:10px 12px">${ic('alert')}<span class="tiny faint">Tidak ada commit baru (0 ahead). Push akan bilang <i>Everything up-to-date</i> dan GitHub tidak berubah.</span></div>` : '')}
     <div class="grid g2"><div class="field"><label>Remote</label><select class="input" data-field="pushRemote">${remoteOpts}</select></div>
       <div class="field"><label>Branch lokal</label><input class="input mono" data-field="pushBranch" value="${esc(d.branch)}" /></div>
       <div class="field"><label>Branch tujuan (opsional)</label><input class="input mono" data-field="pushTarget" placeholder="${esc(d.branch)}" /></div>
@@ -1154,7 +1168,12 @@ async function doGit(action, params) {
     const r = d.result;
     pushTerminal('cmd', `\n$ ${d.entry.command || action}\n`);
     if (r.output) pushTerminal(r.ok ? '' : 'err', r.output.endsWith('\n') ? r.output : r.output + '\n');
-    toast(r.ok ? `${(OP[action] || { label: action }).label} berhasil` : `${(OP[action] || { label: action }).label} gagal`, d.entry.summary || r.output?.slice(0, 140), r.ok ? 'good' : 'bad');
+    const noChanges = Boolean(d.entry.meta?.noChanges);
+    toast(
+      noChanges ? 'Tidak ada yang dikirim' : r.ok ? `${(OP[action] || { label: action }).label} berhasil` : `${(OP[action] || { label: action }).label} gagal`,
+      d.entry.summary || r.output?.slice(0, 140),
+      noChanges ? 'warn' : r.ok ? 'good' : 'bad',
+    );
     await Promise.allSettled([loadRepos(true), loadActivity()]);
     if (S.drawer) await refreshDetail();
     return r.ok ? r : false;
