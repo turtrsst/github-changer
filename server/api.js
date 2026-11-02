@@ -2,7 +2,7 @@
 
 /** Router REST API + Server-Sent Events. */
 import path from 'node:path';
-import { realpathSync } from 'node:fs';
+import { realpathSync, readFileSync } from 'node:fs';
 import { PROJECT_ROOT, DATA_DIR, loadConfig, parameters, saveConfig, resetConfig } from './lib/config.js';
 import { accounts, activity, paths as dataPaths } from './lib/store.js';
 import * as auth from './lib/auth.js';
@@ -11,7 +11,11 @@ import * as git from './lib/git.js';
 import { HttpError, ok, fail, readBody, readRawBody, json } from './lib/util.js';
 import { automationStatus, runAutomation, verifySignature, matchRepos, runDeployCommand } from './lib/automation.js';
 
-const VERSION = '1.0.0';
+// Satu sumber kebenaran: versi di package.json (jangan hardcoded di sini).
+const VERSION = (() => {
+  try { return JSON.parse(readFileSync(path.join(PROJECT_ROOT, 'package.json'), 'utf8')).version || '1.0.0'; }
+  catch { return '1.0.0'; }
+})();
 const SETUP_KEYS = new Set(['auth.clientId', 'ui.theme', 'ui.accent', 'workspace.roots', 'git.binary']);
 let reposCache = { key: '', at: 0, value: null };
 

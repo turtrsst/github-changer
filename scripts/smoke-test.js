@@ -131,6 +131,8 @@ try {
 
   const boot = await request('/api/bootstrap', { token });
   check('bootstrap terotentikasi', boot.data.authenticated === true, JSON.stringify(boot.data.error));
+  const pkgVersion = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version;
+  check('versi UI mengikuti package.json', boot.data.app?.version === pkgVersion, `api ${boot.data.app?.version} vs pkg ${pkgVersion}`);
   check('git terdeteksi', boot.data.environment?.git?.ok === true);
   check('root project valid', boot.data.environment?.roots?.[0]?.exists === true);
   check('tidak ada root path yang tidak ada', boot.data.environment?.roots?.every((r) => r.exists) === true, JSON.stringify(boot.data.environment?.roots));
